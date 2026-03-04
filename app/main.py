@@ -13,6 +13,7 @@ from app.plugins.oauth import KeycloakOAuth2Plugin
 from app.plugins.rate_limit import RateLimitPlugin
 from app.plugins.retry import RetryPlugin
 from app.plugins.circuit_breaker import CircuitBreakerPlugin
+from app.plugins.forward_auth import ForwardAuthPlugin
 from app.plugins.errors import PluginError
 from app.logging_fast import log_json
 from app.metrics import REQUEST_COUNT, REQUEST_LATENCY, prometheus_metrics
@@ -32,6 +33,7 @@ plugins = PluginEngine(
         "rate_limit": RateLimitPlugin(),
         "retry": RetryPlugin(),
         "circuit_breaker": CircuitBreakerPlugin(),
+        "forward_auth": ForwardAuthPlugin(),
         "oauth2": KeycloakOAuth2Plugin(
             issuer="https://keycloak.meudominio.com/realms/myrealm",
             audience="gateway-api",
@@ -263,12 +265,13 @@ async def app(scope, receive, send):
 
 async def foward_call(scope, path, route, context, request_body):
     upstream_url = route["target_base"] + path
+    upstream_headers = context.extra.get("upstream_headers", {})
 
     session = await SessionManager.get_session()
     async with session.request(
         method=scope["method"],
         url=upstream_url,
-        headers={},
+        headers=upstream_headers,
         data=request_body,
         allow_redirects=False,
     ) as resp:

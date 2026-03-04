@@ -27,3 +27,20 @@ Host: localhost:8080
 
 ### Quando o circuito abrir, a resposta deve ser 503 com:
 ### {"code":"CIRCUIT_BREAKER_OPEN","description":"Upstream temporarily unavailable"}
+
+
+### Forward Auth (plugin forward_auth)
+### Exemplo de plugin na rota:
+### {
+###   "type": "forward_auth",
+###   "order": 3,
+###   "config": {
+###     "mode": "propagate",
+###     "source_header": "authorization",
+###     "target_header": "authorization"
+###   }
+### }
+GET http://localhost:8080/ws/01001000/json/ HTTP/1.1
+x-tenant-id: tenant123
+Authorization: Bearer abcdef123456
+Host: localhost:8080

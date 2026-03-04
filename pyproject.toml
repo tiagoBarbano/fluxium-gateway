@@ -22,3 +22,9 @@ dependencies = [
     "redis>=7.2.1",
 ]
 
+[dependency-groups]
+dev = [
+    "pytest>=8.4.2",
+    "pytest-asyncio>=1.2.0",
+]
+

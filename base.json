@@ -51,6 +51,18 @@
         "failure_threshold": 2,
         "recovery_timeout_seconds": 10
       }
+    },
+    {
+      "type": "forward_auth",
+      "order": 0,
+      "config": {
+        "mode": "oauth2_client_credentials",
+        "token_url": "https://idp.exemplo.com/realms/myrealm/protocol/openid-connect/token",
+        "client_id": "gateway-upstream-client",
+        "client_secret": "<secret>",
+        "scope": "pricing.read",
+        "target_header": "authorization"
+      }
     }
   ]
 }

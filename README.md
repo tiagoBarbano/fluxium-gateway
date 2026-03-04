@@ -63,6 +63,7 @@ Fluxo de alto nível:
 │       ├── circuit_breaker.py
 │       ├── engine.py
 │       ├── errors.py
+│       ├── forward_auth.py
 │       ├── jwt_auth.py
 │       ├── oauth.py
 │       ├── rate_limit.py
@@ -163,6 +164,96 @@ Interrompe chamadas temporariamente após sequência de falhas.
 
 - `failure_threshold` (default: `5`)
 - `recovery_timeout_seconds` (default: `30`)
+
+### 6) `forward_auth` (fase `forward`)
+
+Injeta autenticação na chamada upstream.
+
+Modos suportados:
+
+- `propagate` (default): copia header da requisição de entrada para o upstream.
+	- `source_header` (default: `authorization`)
+	- `target_header` (default: `authorization`)
+- `static`: usa token fixo configurado na rota.
+	- `token`
+	- `scheme` (default: `Bearer`)
+- `oauth2_client_credentials`: gera token chamando endpoint OAuth2 e reutiliza em cache até expirar.
+	- `token_url`
+	- `client_id`
+	- `client_secret`
+	- `scope` (opcional)
+	- `audience` (opcional)
+	- `grant_type` (default: `client_credentials`)
+	- `timeout_seconds` (default: `5`)
+	- `cache_skew_seconds` (default: `30`)
+	- `refresh_on_401` (default: `true`) — ao receber 401 do upstream, força refresh do token e refaz a chamada uma vez.
+	- `refresh_retry_methods` (default: `[
+		"GET", "HEAD", "OPTIONS"
+	]`) — métodos permitidos para retry após refresh em 401.
+	- `refresh_retry_all_methods` (default: `false`) — habilita retry em qualquer método (usar com cautela).
+
+Exemplo de configuração:
+
+```json
+{
+	"type": "forward_auth",
+	"order": 40,
+	"config": {
+		"mode": "oauth2_client_credentials",
+		"token_url": "https://idp.exemplo.com/realms/myrealm/protocol/openid-connect/token",
+		"client_id": "gateway-upstream-client",
+		"client_secret": "<secret>",
+		"scope": "pricing.read",
+		"target_header": "authorization"
+	}
+}
+```
+
+Exemplo completo no padrão da rota (retry em 401 apenas para métodos seguros):
+
+```json
+{
+	"tenant": "teste",
+	"prefix": "/ws/{cep}/json/",
+	"target_base": "https://viacep.com.br",
+	"strip_prefix": true,
+	"plugins": [
+		{
+			"type": "oauth22",
+			"order": 1,
+			"config": {
+				"issuer": "https://keycloak.meudominio.com/realms/myrealm",
+				"audience": "gateway-api",
+				"required_scopes": ["pricing.read"]
+			}
+		},
+		{
+			"type": "forward_auth",
+			"order": 3,
+			"config": {
+				"mode": "oauth2_client_credentials",
+				"token_url": "https://idp.exemplo.com/realms/myrealm/protocol/openid-connect/token",
+				"client_id": "gateway-upstream-client",
+				"client_secret": "<secret>",
+				"scope": "pricing.read",
+				"target_header": "authorization",
+				"refresh_on_401": true,
+				"refresh_retry_methods": ["GET", "HEAD", "OPTIONS"],
+				"refresh_retry_all_methods": false
+			}
+		},
+		{
+			"type": "retry",
+			"order": 4,
+			"config": {
+				"attempts": 3,
+				"retry_on": [502, 503, 504],
+				"backoff_ms": 50
+			}
+		}
+	]
+}
+```
 
 ## Padrão de erros de plugin
 
