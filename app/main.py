@@ -1,5 +1,6 @@
 import time
 import json
+from pathlib import Path
 from types import SimpleNamespace
 
 from app.handler_http import SessionManager
@@ -25,6 +26,35 @@ from opentelemetry.semconv.attributes.http_attributes import HTTP_ROUTE
 import app.telemetry  # noqa: F401 - Importa para habilitar o OpenTelemetry
 
 session = SessionManager.init()
+OPENAPI_FILE = Path(__file__).resolve().parents[1] / "openapi.json"
+SWAGGER_HTML = """
+<!doctype html>
+<html lang=\"en\">
+<head>
+    <meta charset=\"UTF-8\" />
+    <meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\" />
+    <title>Fluxium Gateway - Swagger UI</title>
+    <link rel=\"stylesheet\" href=\"https://unpkg.com/swagger-ui-dist@5/swagger-ui.css\" />
+    <style>
+        html, body { margin: 0; padding: 0; height: 100%; background: #0b1220; }
+        #swagger-ui { height: 100%; }
+    </style>
+</head>
+<body>
+    <div id=\"swagger-ui\"></div>
+    <script src=\"https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js\"></script>
+    <script>
+        window.ui = SwaggerUIBundle({
+            url: '/openapi.json',
+            dom_id: '#swagger-ui',
+            deepLinking: true,
+            displayRequestDuration: true,
+            persistAuthorization: true,
+        });
+    </script>
+</body>
+</html>
+""".strip()
 
 plugins = PluginEngine(
     {
@@ -68,6 +98,41 @@ async def app(scope, receive, send):
 
     start = time.perf_counter()
     path = scope["path"]
+
+    if path == "/openapi.json":
+        if OPENAPI_FILE.exists():
+            body = OPENAPI_FILE.read_bytes()
+            status = 200
+        else:
+            status = 404
+            body = json.dumps(
+                {
+                    "code": "OPENAPI_NOT_FOUND",
+                    "description": "openapi.json not found at project root",
+                }
+            ).encode()
+
+        await send(
+            {
+                "type": "http.response.start",
+                "status": status,
+                "headers": [(b"content-type", b"application/json")],
+            }
+        )
+        await send({"type": "http.response.body", "body": body})
+        return
+
+    if path == "/docs":
+        body = SWAGGER_HTML.encode()
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [(b"content-type", b"text/html; charset=utf-8")],
+            }
+        )
+        await send({"type": "http.response.body", "body": body})
+        return
 
     if path == "/metrics":
         body = prometheus_metrics()

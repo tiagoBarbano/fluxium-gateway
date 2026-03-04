@@ -1,0 +1,94 @@
+{
+  "openapi": "3.0.3",
+  "info": {
+    "title": "Fluxium Gateway API",
+    "description": "OpenAPI de exemplo para visualização no Swagger UI do gateway.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:8080",
+      "description": "Local"
+    }
+  ],
+  "tags": [
+    {
+      "name": "Gateway",
+      "description": "Endpoints utilitários do gateway"
+    }
+  ],
+  "paths": {
+    "/metrics": {
+      "get": {
+        "tags": ["Gateway"],
+        "summary": "Métricas Prometheus",
+        "description": "Retorna métricas do gateway no formato Prometheus.",
+        "responses": {
+          "200": {
+            "description": "Métricas retornadas com sucesso",
+            "content": {
+              "text/plain": {
+                "schema": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/ws/{cep}/json/": {
+      "get": {
+        "tags": ["Gateway"],
+        "summary": "Proxy de exemplo",
+        "description": "Endpoint de exemplo roteado via configuração dinâmica.",
+        "parameters": [
+          {
+            "name": "cep",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "01001000"
+            }
+          },
+          {
+            "name": "x-tenant-id",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "tenant123"
+            }
+          },
+          {
+            "name": "Authorization",
+            "in": "header",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "example": "Bearer <token>"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Resposta do upstream"
+          },
+          "401": {
+            "description": "Não autorizado"
+          },
+          "404": {
+            "description": "Rota não encontrada"
+          },
+          "429": {
+            "description": "Rate limit excedido"
+          },
+          "503": {
+            "description": "Serviço indisponível"
+          }
+        }
+      }
+    }
+  }
+}
