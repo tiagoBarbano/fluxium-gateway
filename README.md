@@ -1,5 +1,9 @@
 # Fluxium Gateway
 
+<p align="center">
+	<img src="./logo.svg" alt="Fluxium Gateway Logo" width="720" />
+</p>
+
 Gateway ASGI em Python para roteamento dinâmico de requisições HTTP com pipeline de plugins (autenticação JWT, rate limit, cache, retry e circuit breaker), métricas Prometheus e tracing OpenTelemetry.
 
 ## Visão Geral

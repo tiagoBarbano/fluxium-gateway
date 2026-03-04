@@ -1,0 +1,40 @@
+<svg width="1200" height="320" viewBox="0 0 1200 320" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="fluxGradient" x1="40" y1="30" x2="300" y2="290" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1EC8FF"/>
+      <stop offset="1" stop-color="#2563EB"/>
+    </linearGradient>
+    <linearGradient id="coreGradient" x1="105" y1="95" x2="215" y2="215" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#22D3EE"/>
+      <stop offset="1" stop-color="#0284C7"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="320" rx="24" fill="#0B1220"/>
+
+  <g transform="translate(34,24)">
+    <path d="M140 16L242 74V190L140 248L38 190V74L140 16Z" stroke="url(#fluxGradient)" stroke-width="14"/>
+    <path d="M140 56L206 94V170L140 208L74 170V94L140 56Z" fill="url(#coreGradient)" fill-opacity="0.25" stroke="url(#coreGradient)" stroke-width="10"/>
+
+    <circle cx="140" cy="132" r="18" fill="#67E8F9"/>
+
+    <path d="M74 132H122" stroke="#7DD3FC" stroke-width="8" stroke-linecap="round"/>
+    <path d="M158 132H206" stroke="#7DD3FC" stroke-width="8" stroke-linecap="round"/>
+    <path d="M107 99L129 121" stroke="#7DD3FC" stroke-width="8" stroke-linecap="round"/>
+    <path d="M173 165L195 187" stroke="#7DD3FC" stroke-width="8" stroke-linecap="round"/>
+    <path d="M173 99L195 77" stroke="#7DD3FC" stroke-width="8" stroke-linecap="round"/>
+    <path d="M107 165L129 143" stroke="#7DD3FC" stroke-width="8" stroke-linecap="round"/>
+
+    <circle cx="74" cy="132" r="8" fill="#38BDF8"/>
+    <circle cx="206" cy="132" r="8" fill="#38BDF8"/>
+    <circle cx="107" cy="99" r="8" fill="#38BDF8"/>
+    <circle cx="173" cy="165" r="8" fill="#38BDF8"/>
+    <circle cx="173" cy="99" r="8" fill="#38BDF8"/>
+    <circle cx="107" cy="165" r="8" fill="#38BDF8"/>
+  </g>
+
+  <g transform="translate(340,96)">
+    <text x="0" y="72" fill="#E2E8F0" font-family="Inter, Segoe UI, Roboto, Arial, sans-serif" font-size="78" font-weight="800" letter-spacing="1.2">FLUXIUM</text>
+    <text x="2" y="136" fill="#7DD3FC" font-family="Inter, Segoe UI, Roboto, Arial, sans-serif" font-size="44" font-weight="600" letter-spacing="6">GATEWAY</text>
+  </g>
+</svg>
