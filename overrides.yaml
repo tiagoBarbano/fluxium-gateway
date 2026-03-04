@@ -1,0 +1,3 @@
+overrides:
+  default:
+    max_traces_per_user: 50000

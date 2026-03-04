@@ -1,0 +1,29 @@
+### Basico (rota com cache/jwt/rate_limit)
+GET http://localhost:8080/ws/01001000/json/ HTTP/1.1
+x-tenant-id: tenant123
+Authorization: Bearer abcdef123456
+Host: localhost:8080
+
+
+### Retry (configure a rota com plugin retry no Mongo)
+### Exemplo de rota: /unstable
+### plugin config sugerido: {"attempts": 3, "delay_ms": 100, "retry_on_status": [502,503,504]}
+GET http://localhost:8080/unstable HTTP/1.1
+x-tenant-id: tenant123
+Authorization: Bearer abcdef123456
+Host: localhost:8080
+
+
+### Circuit Breaker (configure a rota com circuit_breaker + retry)
+### plugin config sugerido:
+###   circuit_breaker: {"failure_threshold": 2, "recovery_timeout_seconds": 10}
+###   retry: {"attempts": 2, "delay_ms": 50, "retry_on_status": [502,503,504]}
+### Dispare esta request repetidamente para abrir o circuito.
+GET http://localhost:8080/unstable-cb HTTP/1.1
+x-tenant-id: tenant123
+Authorization: Bearer abcdef123456
+Host: localhost:8080
+
+
+### Quando o circuito abrir, a resposta deve ser 503 com:
+### {"code":"CIRCUIT_BREAKER_OPEN","description":"Upstream temporarily unavailable"}

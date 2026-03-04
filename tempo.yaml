@@ -1,0 +1,32 @@
+server:
+  http_listen_port: 3200
+  log_level: info
+
+distributor:
+  receivers:
+    otlp:
+      protocols:
+        grpc:
+        http:
+
+compactor:
+  compaction:
+    block_retention: 1h
+
+ingester:
+  trace_idle_period: 2s
+  max_block_bytes: 1_000_000
+
+metrics_generator:
+  registry:
+    external_labels:
+      source: tempo
+
+storage:
+  trace:
+    backend: local
+    local:
+      path: /var/tempo
+
+overrides:
+  per_tenant_override_config: /etc/tempo/tempo-overrides.yaml

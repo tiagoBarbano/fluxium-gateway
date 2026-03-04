@@ -1,0 +1,56 @@
+{
+  "_id": "69a78fa296247404432e6bcd",
+  "tenant": "teste",
+  "prefix": "/ws/{cep}/json/",
+  "target_base": "https://viacep.com.br",
+  "strip_prefix": true,
+  "plugins": [
+    {
+      "type": "oauth22",
+      "order": 1,
+      "config": {
+        "issuer": "https://keycloak.meudominio.com/realms/myrealm",
+        "audience": "gateway-api",
+        "required_scopes": [
+          "pricing.read"
+        ]
+      }
+    },
+    {
+      "type": "rate_limit",
+      "order": 2,
+      "config": {
+        "limit": 5,
+        "window_seconds": 60
+      }
+    },
+    {
+      "type": "retry",
+      "order": 0,
+      "config": {
+        "attempts": 3,
+        "retry_on": [
+          502,
+          503,
+          504
+        ],
+        "backoff_ms": 50
+      }
+    },
+    {
+      "type": "cache",
+      "order": 4,
+      "config": {
+        "ttl_seconds": 60
+      }
+    },
+    {
+      "type": "circuit_breaker",
+      "order": 0,
+      "config": {
+        "failure_threshold": 2,
+        "recovery_timeout_seconds": 10
+      }
+    }
+  ]
+}
