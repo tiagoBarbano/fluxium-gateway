@@ -11,7 +11,7 @@ PymongoInstrumentor().instrument()
 CHANNEL = "config_updates"
 redis_url = os.getenv(
 	"REDIS_URL",
-	"redis://localhost:6379",
+	"redis://localhost:6379/0",
 )
 
 redis_client = redis.from_url(redis_url)
@@ -45,12 +45,16 @@ async def load_routes(entity_id=None, tenant_id=None):
     routes = {}
 
     if entity_id and tenant_id:
-        r = await routes_collection.find_one({"tenant_id": tenant_id, "entity_id": entity_id})
+        r = await routes_collection.find_one({"tenant": tenant_id, "_id": entity_id})
         if r:
+            print(f"Updating route in cache: {r['prefix']}")
+            print(r)
             routes[r["prefix"]] = r
             _routes_cache.update(routes)
         return
     async for r in routes_collection.find():
+        print(f"Loading route into cache: {r['prefix']}")
+        print(r)
         routes[r["prefix"]] = r
     _routes_cache = routes
 
@@ -76,6 +80,7 @@ async def subscribe_config_updates():
         if message["type"] != "message":
             continue
 
+        print(f"Received config update: {message['data']}")
         event = orjson.loads(message["data"])
 
         if event["entity"] == "route":
@@ -87,7 +92,8 @@ async def subscribe_config_updates():
                 )
 
             elif event["event"] == "delete":
-                r = await routes_collection.find_one({"tenant_id": event["tenant_id"], "entity_id": event["entity_id"]})
+                r = await routes_collection.find_one({"tenant": event["tenant_id"], "_id": event["entity_id"]})
                 prefix = r["prefix"] if r else None
                 if prefix:  
+                    print(f"Removing route from cache: {prefix}")
                     _routes_cache.pop(prefix, None)
