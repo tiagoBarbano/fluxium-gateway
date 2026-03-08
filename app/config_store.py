@@ -45,29 +45,63 @@ async def load_routes(entity_id=None, tenant_id=None):
     routes = {}
 
     if entity_id and tenant_id:
-        r = await routes_collection.find_one({"tenant": tenant_id, "_id": entity_id})
+        r = await routes_collection.find_one({"tenant_id": tenant_id, "_id": entity_id})
         if r:
             print(f"Updating route in cache: {r['prefix']}")
             print(r)
-            routes[r["prefix"]] = r
+            methods = r.get("methods") or ["GET"]
+            for method in methods:
+                key = f"{method.upper()}:{r['prefix']}"
+                routes[key] = r
             _routes_cache.update(routes)
         return
     async for r in routes_collection.find():
         print(f"Loading route into cache: {r['prefix']}")
         print(r)
-        routes[r["prefix"]] = r
+        methods = r.get("methods") or ["GET"]
+        for method in methods:
+            key = f"{method.upper()}:{r['prefix']}"
+            routes[key] = r
     _routes_cache = routes
 
-def match_route(path):
+def match_route(key):
+    method, path = key.split(":", 1)
+    method = method.upper()
     for prefix, route in _routes_cache.items():
-        if _is_template_route(prefix):
-            if _match_template_route(path, prefix):
+        value_method, value_prefix = prefix.split(":", 1)
+        if value_method.upper() != method:
+            continue
+        if _is_template_route(value_prefix):
+            if _match_template_route(path, value_prefix):
                 return route
             continue
 
-        if path.startswith(prefix):
+        if path.startswith(value_prefix):
             return route
     return None
+
+
+def get_available_routes():
+    """Retorna um snapshot serializavel das rotas atualmente em cache."""
+    deduplicated_routes = {}
+    for route in _routes_cache.values():
+        methods = tuple(sorted((route.get("methods") or ["GET"])))
+        dedup_key = (route.get("prefix"), route.get("target_base"), methods)
+        deduplicated_routes[dedup_key] = route
+
+    routes = []
+    for route in deduplicated_routes.values():
+        routes.append(
+            {
+                "prefix": route.get("prefix"),
+                "target_base": route.get("target_base"),
+                "strip_prefix": route.get("strip_prefix", False),
+                "methods": route.get("methods", ["GET"]),
+                "plugins": route.get("plugins", []),
+            }
+        )
+
+    return sorted(routes, key=lambda item: item["prefix"] or "")
 
 
 async def subscribe_config_updates():
@@ -92,8 +126,11 @@ async def subscribe_config_updates():
                 )
 
             elif event["event"] == "delete":
-                r = await routes_collection.find_one({"tenant": event["tenant_id"], "_id": event["entity_id"]})
+                r = await routes_collection.find_one({"tenant_id": event["tenant_id"], "_id": event["entity_id"]})
                 prefix = r["prefix"] if r else None
-                if prefix:  
-                    print(f"Removing route from cache: {prefix}")
-                    _routes_cache.pop(prefix, None)
+                methods = r.get("methods") if r else None
+                if prefix and methods:
+                    for method in methods:
+                        key = f"{method.upper()}:{prefix}"
+                        print(f"Removing route from cache: {key}")
+                        _routes_cache.pop(key, None)

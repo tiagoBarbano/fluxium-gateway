@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from app.handler_http import SessionManager
 from app.lifespan import lifespan
 from app.context import RequestContext
-from app.config_store import match_route
+from app.config_store import match_route, get_available_routes
 from app.plugins.engine import PluginEngine
 from app.plugins.cache import CachePlugin
 from app.plugins.jwt_auth import JWTAuthPlugin
@@ -146,7 +146,53 @@ async def app(scope, receive, send):
         await send({"type": "http.response.body", "body": body})
         return
 
-    route = match_route(path)
+    if path == "/routes":
+        if scope["method"] != "GET":
+            await send(
+                {
+                    "type": "http.response.start",
+                    "status": 405,
+                    "headers": [
+                        (b"content-type", b"application/json"),
+                        (b"allow", b"GET"),
+                    ],
+                }
+            )
+            await send(
+                {
+                    "type": "http.response.body",
+                    "body": json.dumps(
+                        {
+                            "code": "METHOD_NOT_ALLOWED",
+                            "description": "Only GET is allowed for this endpoint",
+                        }
+                    ).encode(),
+                }
+            )
+            return
+
+        routes = get_available_routes()
+        route_patterns = sorted(
+            f"{method.upper()} {route.get('prefix', '')}"
+            for route in routes
+            for method in (route.get("methods") or ["GET"])
+        )
+
+        body = json.dumps({"routes": routes, "route_patterns": route_patterns}).encode()
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [(b"content-type", b"application/json")],
+            }
+        )
+        await send({"type": "http.response.body", "body": body})
+        return
+
+    method = scope["method"]
+    key = f"{method}:{path}"
+
+    route = match_route(key)
     if not route:
         await send(
             {
@@ -330,6 +376,11 @@ async def app(scope, receive, send):
 
 async def foward_call(scope, path, route, context, request_body):
     upstream_url = route["target_base"] + path
+    query_string = scope.get("query_string", b"")
+    if query_string:
+        separator = "&" if "?" in upstream_url else "?"
+        upstream_url = f"{upstream_url}{separator}{query_string.decode('latin-1')}"
+
     upstream_headers = context.extra.get("upstream_headers", {})
 
     session = await SessionManager.get_session()
@@ -359,7 +410,7 @@ async def foward_call(scope, path, route, context, request_body):
 
 
 def get_route_details(method, path):
-    x = match_route(path)
+    x = match_route(f"{method}:{path}")
     return x["prefix"] if x else path, method.upper()
 
 
@@ -373,7 +424,7 @@ def _get_default_span_details(scope):
 
 app = OpenTelemetryMiddleware(
     app,
-    excluded_urls=parse_excluded_urls("/metrics,/openapi.json,/docs"),
+    excluded_urls=parse_excluded_urls("/metrics,/openapi.json,/docs,/routes"),
     # exclude_spans=["send", "receive"],
     default_span_details=_get_default_span_details,
 )

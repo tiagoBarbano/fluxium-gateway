@@ -84,3 +84,28 @@ async def test_forward_call_does_not_set_context_response_for_non_200(monkeypatc
 
     assert result.status == 502
     assert not hasattr(context, "response")
+
+
+@pytest.mark.asyncio
+async def test_forward_call_forwards_query_string(monkeypatch):
+    response = FakeResponse(status=200, body=b"ok")
+    session = FakeSession(response)
+
+    async def fake_get_session():
+        return session
+
+    monkeypatch.setattr("app.main.SessionManager.get_session", fake_get_session)
+
+    context = SimpleNamespace(extra={})
+    route = {"target_base": "https://upstream.local", "prefix": "/proxy"}
+    scope = {"method": "GET", "query_string": b"limit=10&offset=20"}
+
+    await foward_call(
+        scope=scope,
+        path="/resource",
+        route=route,
+        context=context,
+        request_body=b"",
+    )
+
+    assert session.request_kwargs["url"] == "https://upstream.local/resource?limit=10&offset=20"

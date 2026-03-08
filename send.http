@@ -1,8 +1,8 @@
 ### Basico (rota com cache/jwt/rate_limit)
-GET http://localhost:8080/ws/01001000/json/ HTTP/1.1
-x-tenant-id: tenant123
+GET http://localhost:8090/ws/01001000/json/ HTTP/1.1
+x-tenant-id: emp_0001_a
 Authorization: Bearer abcdef123456
-Host: localhost:8080
+Host: localhost:8090
 
 
 ### Retry (configure a rota com plugin retry no Mongo)
