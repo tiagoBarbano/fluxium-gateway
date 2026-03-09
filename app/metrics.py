@@ -5,15 +5,15 @@ from prometheus_client import (
 )
 
 REQUEST_COUNT = Counter(
-    "gateway_requests_total",
+    "http_requests_total",
     "Total requests",
     ["method", "route", "status", "tenant"]
 )
 
 REQUEST_LATENCY = Histogram(
-    "gateway_request_latency_seconds",
+    "http_request_latency_seconds",
     "Request latency",
-    ["route", "tenant"]
+    ["method", "route", "tenant"]
 )
 
 IGNORED_PATHS = {"/metrics", "/docs", "/openapi.json", "/favicon.ico"}

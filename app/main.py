@@ -293,7 +293,7 @@ async def app(scope, receive, send):
             status=str(cached_response["status"]),
             tenant=tenant,
         ).inc()
-        REQUEST_LATENCY.labels(route=route["prefix"], tenant=tenant).observe(latency)
+        REQUEST_LATENCY.labels(method=scope["method"], route=route["prefix"], tenant=tenant).observe(latency)
 
         log_json(
             "INFO",
@@ -364,7 +364,7 @@ async def app(scope, receive, send):
         status=str(resp.status),
         tenant=tenant,
     ).inc()
-    REQUEST_LATENCY.labels(route=route["prefix"], tenant=tenant).observe(latency)
+    REQUEST_LATENCY.labels(method=scope["method"], route=route["prefix"], tenant=tenant).observe(latency)
 
     log_json(
         "INFO",
