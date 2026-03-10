@@ -44,13 +44,13 @@ async def test_forward_call_passes_headers_and_returns_response(monkeypatch):
     context = SimpleNamespace(extra={"upstream_headers": {"authorization": "Bearer out"}})
     route = {"target_base": "https://upstream.local", "prefix": "/proxy"}
     scope = {"method": "GET"}
+    context.extra["request_body"] = b""
 
     result = await foward_call(
         scope=scope,
         path="/resource",
         route=route,
         context=context,
-        request_body=b"",
     )
 
     assert result.status == 200
@@ -73,13 +73,13 @@ async def test_forward_call_does_not_set_context_response_for_non_200(monkeypatc
     context = SimpleNamespace(extra={})
     route = {"target_base": "https://upstream.local", "prefix": "/proxy"}
     scope = {"method": "POST"}
+    context.extra["request_body"] = b"payload"
 
     result = await foward_call(
         scope=scope,
         path="/resource",
         route=route,
         context=context,
-        request_body=b"payload",
     )
 
     assert result.status == 502
@@ -99,13 +99,13 @@ async def test_forward_call_forwards_query_string(monkeypatch):
     context = SimpleNamespace(extra={})
     route = {"target_base": "https://upstream.local", "prefix": "/proxy"}
     scope = {"method": "GET", "query_string": b"limit=10&offset=20"}
+    context.extra["request_body"] = b""
 
     await foward_call(
         scope=scope,
         path="/resource",
         route=route,
         context=context,
-        request_body=b"",
     )
 
     assert session.request_kwargs["url"] == "https://upstream.local/resource?limit=10&offset=20"

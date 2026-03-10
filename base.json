@@ -1,68 +1,210 @@
-{
-  "_id": "69a78fa296247404432e6bcd",
-  "tenant": "teste",
-  "prefix": "/ws/{cep}/json/",
-  "target_base": "https://viacep.com.br",
-  "strip_prefix": true,
-  "plugins": [
-    {
-      "type": "oauth22",
-      "order": 1,
-      "config": {
-        "issuer": "https://keycloak.meudominio.com/realms/myrealm",
-        "audience": "gateway-api",
-        "required_scopes": [
-          "pricing.read"
-        ]
+[
+  {
+    "_id": "69a78fa296247404432e6bcd",
+    "tenant": "teste",
+    "prefix": "/ws/{cep}/json/",
+    "target_base": "https://viacep.com.br",
+    "strip_prefix": true,
+    "plugins": [
+      {
+        "type": "oauth22",
+        "order": 1,
+        "config": {
+          "issuer": "https://keycloak.meudominio.com/realms/myrealm",
+          "audience": "gateway-api",
+          "required_scopes": [
+            "pricing.read"
+          ]
+        }
+      },
+      {
+        "type": "rate_limit",
+        "order": 2,
+        "config": {
+          "limit": 5,
+          "window_seconds": 60
+        }
+      },
+      {
+        "type": "retry",
+        "order": 0,
+        "config": {
+          "attempts": 3,
+          "retry_on": [
+            502,
+            503,
+            504
+          ],
+          "backoff_ms": 50
+        }
+      },
+      {
+        "type": "cache",
+        "order": 4,
+        "config": {
+          "ttl_seconds": 60
+        }
+      },
+      {
+        "type": "circuit_breaker",
+        "order": 0,
+        "config": {
+          "failure_threshold": 2,
+          "recovery_timeout_seconds": 10
+        }
+      },
+      {
+        "type": "forward_auth",
+        "order": 0,
+        "config": {
+          "mode": "oauth2_client_credentials",
+          "token_url": "https://idp.exemplo.com/realms/myrealm/protocol/openid-connect/token",
+          "client_id": "gateway-upstream-client",
+          "client_secret": "<secret>",
+          "scope": "pricing.read",
+          "target_header": "authorization"
+        }
       }
-    },
-    {
-      "type": "rate_limit",
-      "order": 2,
-      "config": {
-        "limit": 5,
-        "window_seconds": 60
+    ]
+  },
+  {
+    "prefix": "/orders",
+    "target_base": "http://orders-service",
+    "strip_prefix": false,
+    "plugins": [
+      {
+        "type": "validation",
+        "order": 1,
+        "config": {
+          "allowed_methods": [
+            "POST"
+          ],
+          "required_fields": [
+            "order_id",
+            "customer_id"
+          ],
+          "header_rules": [
+            {
+              "name": "x-source",
+              "required": true,
+              "equals": "portal"
+            }
+          ],
+          "query_rules": [
+            {
+              "name": "version",
+              "required": true,
+              "equals": "v1"
+            }
+          ]
+        }
+      },
+      {
+        "type": "transformation",
+        "order": 2,
+        "config": {
+          "set_headers": {
+            "x-origin": "gateway"
+          },
+          "remove_headers": [
+            "x-debug"
+          ],
+          "json_rename": {
+            "customer_id": "client_id"
+          },
+          "json_defaults": {
+            "source": "gateway",
+            "channel": "api"
+          },
+          "json_remove": [
+            "internal_notes"
+          ]
+        }
+      },
+      {
+        "type": "event_bridge",
+        "order": 3,
+        "config": {
+          "mode": "stream",
+          "stream": "orders.events",
+          "include_headers": false,
+          "event": {
+            "domain": "orders",
+            "event_type": "order.received"
+          },
+          "forward_after_publish": true
+        }
       }
-    },
-    {
-      "type": "retry",
-      "order": 0,
-      "config": {
-        "attempts": 3,
-        "retry_on": [
-          502,
-          503,
-          504
-        ],
-        "backoff_ms": 50
+    ]
+  },
+  {
+  _id: 'e42ab6b4-d60c-4e0e-bb8e-ddee7d6b3667',
+  tenant_id: 'emp_0001_a',
+  api_id: '542eb8b7-9e07-4af7-96f9-3c92e449028c',
+  prefix: '/orders/events',
+  target_base: 'http: //orders-service',
+  methods: [
+    'POST'
+    ],
+  plugins: [
+      {
+      type: 'validation',
+      order: NumberInt('1'),
+      config: {
+        allowed_methods: [
+          'POST'
+          ],
+        required_fields: [
+          'order_id',
+          'customer_id'
+          ],
+        header_rules: [
+            {
+            name: 'x-source',
+            required: true,
+            equals: 'portal'
+            }
+          ],
+        query_rules: []
+        }
+      },
+      {
+      type: 'transformation',
+      order: NumberInt('2'),
+      config: {
+        set_headers: {
+          'x-origin': 'gateway'
+          },
+        remove_headers: [
+          'x-debug'
+          ],
+        json_rename: {
+          customer_id: 'client_id'
+          },
+        json_defaults: {
+          source: 'gateway',
+          event_version: 'v1'
+          },
+        json_remove: [
+          'internal_notes'
+          ]
+        }
+      },
+      {
+      type: 'event_bridge',
+      order: NumberInt('3'),
+      config: {
+        mode: 'pubsub',
+        channel: 'orders.events',
+        include_headers: false,
+        event: {
+          domain: 'orders',
+          event_type: 'order.created'
+          },
+        forward_after_publish: false,
+        response_status: NumberInt('202')
+        }
       }
-    },
-    {
-      "type": "cache",
-      "order": 4,
-      "config": {
-        "ttl_seconds": 60
-      }
-    },
-    {
-      "type": "circuit_breaker",
-      "order": 0,
-      "config": {
-        "failure_threshold": 2,
-        "recovery_timeout_seconds": 10
-      }
-    },
-    {
-      "type": "forward_auth",
-      "order": 0,
-      "config": {
-        "mode": "oauth2_client_credentials",
-        "token_url": "https://idp.exemplo.com/realms/myrealm/protocol/openid-connect/token",
-        "client_id": "gateway-upstream-client",
-        "client_secret": "<secret>",
-        "scope": "pricing.read",
-        "target_header": "authorization"
-      }
-    }
-  ]
-}
+    ]
+  }
+]

@@ -15,6 +15,9 @@ from app.plugins.rate_limit import RateLimitPlugin
 from app.plugins.retry import RetryPlugin
 from app.plugins.circuit_breaker import CircuitBreakerPlugin
 from app.plugins.forward_auth import ForwardAuthPlugin
+from app.plugins.validation import ValidationPlugin
+from app.plugins.transformation import TransformationPlugin
+from app.plugins.event_bridge import EventBridgePlugin
 from app.plugins.errors import PluginError
 from app.logging_fast import log_json
 from app.metrics import REQUEST_COUNT, REQUEST_LATENCY, prometheus_metrics
@@ -64,6 +67,9 @@ plugins = PluginEngine(
         "retry": RetryPlugin(),
         "circuit_breaker": CircuitBreakerPlugin(),
         "forward_auth": ForwardAuthPlugin(),
+        "validation": ValidationPlugin(),
+        "transformation": TransformationPlugin(),
+        "event_bridge": EventBridgePlugin(),
         "oauth2": KeycloakOAuth2Plugin(
             issuer="https://keycloak.meudominio.com/realms/myrealm",
             audience="gateway-api",
@@ -306,11 +312,12 @@ async def app(scope, receive, send):
         return
 
     request_body = await read_full_body(receive)
+    context.extra["request_body"] = request_body
 
     try:
         resp = await plugins.run_forward(
             context,
-            lambda: foward_call(scope, path, route, context, request_body),
+            lambda: foward_call(scope, path, route, context),
         )
     except Exception as error:
         log_json(
@@ -374,18 +381,25 @@ async def app(scope, receive, send):
         tenant=tenant,
     )
 
-async def foward_call(scope, path, route, context, request_body):
-    upstream_url = route["target_base"] + path
-    query_string = scope.get("query_string", b"")
+async def foward_call(scope, path, route, context):
+    upstream_path = context.extra.get("upstream_path", path)
+    upstream_method = context.extra.get("upstream_method", scope["method"])
+    upstream_url = route["target_base"] + upstream_path
+
+    query_string = context.extra.get("upstream_query_string", scope.get("query_string", b""))
+    if isinstance(query_string, str):
+        query_string = query_string.encode("latin-1")
+
     if query_string:
         separator = "&" if "?" in upstream_url else "?"
         upstream_url = f"{upstream_url}{separator}{query_string.decode('latin-1')}"
 
     upstream_headers = context.extra.get("upstream_headers", {})
+    request_body = context.extra.get("request_body", b"")
 
     session = await SessionManager.get_session()
     async with session.request(
-        method=scope["method"],
+        method=upstream_method,
         url=upstream_url,
         headers=upstream_headers,
         data=request_body,

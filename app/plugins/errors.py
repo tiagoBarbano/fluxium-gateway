@@ -49,3 +49,27 @@ class CacheBackendUnavailableError(PluginError):
     status_code = 503
     error_code = "CACHE_BACKEND_UNAVAILABLE"
     description = "Cache backend is unavailable"
+
+
+class ValidationFailedError(PluginError):
+    status_code = 400
+    error_code = "VALIDATION_FAILED"
+    description = "Request validation failed"
+
+
+class ValidationInvalidJsonError(PluginError):
+    status_code = 400
+    error_code = "VALIDATION_INVALID_JSON"
+    description = "Request body must be valid JSON"
+
+
+class TransformationInvalidJsonError(PluginError):
+    status_code = 400
+    error_code = "TRANSFORMATION_INVALID_JSON"
+    description = "Transformation requires valid JSON body"
+
+
+class EventBridgePublishError(PluginError):
+    status_code = 502
+    error_code = "EVENT_BRIDGE_PUBLISH_ERROR"
+    description = "Failed to publish event"

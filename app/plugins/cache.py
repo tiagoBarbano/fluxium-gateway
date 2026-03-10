@@ -11,7 +11,7 @@ from .errors import CacheBackendUnavailableError
 
 redis_url = os.getenv(
     "REDIS_URL",
-    "redis://localhost:6379",
+    "redis://:redis1234@localhost:6379/1",
 )
 
 redis_client = redis.from_url(redis_url)

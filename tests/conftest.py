@@ -12,7 +12,7 @@ if str(PROJECT_ROOT) not in sys.path:
 
 @pytest.fixture
 def make_context():
-    def _make_context(route=None, headers=None, method="GET"):
+    def _make_context(route=None, headers=None, method="GET", tenant="tenant-a"):
         route = route or {
             "prefix": "/test",
             "target_base": "http://upstream",
@@ -20,7 +20,7 @@ def make_context():
         }
         headers = headers or []
         scope = {"method": method, "headers": headers}
-        return SimpleNamespace(route=route, scope=scope, extra={})
+        return SimpleNamespace(route=route, scope=scope, tenant=tenant, extra={})
 
     return _make_context
 

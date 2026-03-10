@@ -1,8 +1,8 @@
 ### Basico (rota com cache/jwt/rate_limit)
-GET http://localhost:8090/ws/01001000/json/ HTTP/1.1
+GET http://localhost:8080/ws/01001000/json/ HTTP/1.1
 x-tenant-id: emp_0001_a
 Authorization: Bearer abcdef123456
-Host: localhost:8090
+Host: localhost:8080
 
 
 ### Retry (configure a rota com plugin retry no Mongo)
@@ -40,7 +40,7 @@ Host: localhost:8080
 ###     "target_header": "authorization"
 ###   }
 ### }
-GET http://localhost:8080/ws/01001000/json/ HTTP/1.1
+GET http://localhost:8080/routes HTTP/1.1
 x-tenant-id: tenant123
 Authorization: Bearer abcdef123456
 Host: localhost:8080
@@ -59,6 +59,26 @@ Accept: application/json
 {
     "renda": 9000,
     "score_credito": 950,
+    "parcelas": [
+        500,
+        400,
+        300
+    ]
+}
+
+
+### Basico (rota com cache/jwt/rate_limit)
+POST  http://localhost:8080/orders/events HTTP/1.1
+x-tenant-id: emp_0001_b
+Authorization: Bearer abcdef123456
+Host: localhost:8080
+Content-Type: application/json
+Accept: application/json
+x-source: portal
+
+{
+    "order_id": 9000,
+    "customer_id": 950,
     "parcelas": [
         500,
         400,

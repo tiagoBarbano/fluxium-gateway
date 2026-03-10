@@ -11,7 +11,7 @@ PymongoInstrumentor().instrument()
 CHANNEL = "config_updates"
 redis_url = os.getenv(
 	"REDIS_URL",
-	"redis://localhost:6379/0",
+	"redis://:redis1234@localhost:6379/0",
 )
 
 redis_client = redis.from_url(redis_url)
