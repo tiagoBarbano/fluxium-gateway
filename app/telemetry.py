@@ -1,4 +1,5 @@
 import os
+import logging
 
 from opentelemetry import trace
 from opentelemetry.sdk.trace import TracerProvider, sampling
@@ -6,9 +7,13 @@ from opentelemetry.sdk.resources import Resource
 from opentelemetry.sdk.trace.export import BatchSpanProcessor
 from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExporter
 
+
+logger = logging.getLogger("otel-gateway")
+logger.setLevel(getattr(logging, os.getenv("OTEL_LOG_LEVEL", "INFO").upper(), logging.INFO))
+
 otel_url = os.getenv(
 	"OTEL_EXPORTER_OTLP_ENDPOINT",
-	"http://localhost:4317",
+	"http://tempo:4317",
 )
 
 

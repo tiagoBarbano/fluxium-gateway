@@ -73,3 +73,45 @@ class EventBridgePublishError(PluginError):
     status_code = 502
     error_code = "EVENT_BRIDGE_PUBLISH_ERROR"
     description = "Failed to publish event"
+
+
+class APIKeyMissingError(PluginError):
+    status_code = 401
+    error_code = "API_KEY_MISSING"
+    description = "API key is missing"
+
+
+class APIKeyInvalidError(PluginError):
+    status_code = 403
+    error_code = "API_KEY_INVALID"
+    description = "API key is invalid"
+
+
+class CORSOriginNotAllowedError(PluginError):
+    status_code = 403
+    error_code = "CORS_ORIGIN_NOT_ALLOWED"
+    description = "Origin is not allowed"
+
+
+class IPRestrictionForbiddenError(PluginError):
+    status_code = 403
+    error_code = "IP_RESTRICTION_FORBIDDEN"
+    description = "Request IP is not allowed"
+
+
+class RequestSizeExceededError(PluginError):
+    status_code = 413
+    error_code = "REQUEST_SIZE_EXCEEDED"
+    description = "Request payload is too large"
+
+
+class ConsumerNotResolvedError(PluginError):
+    status_code = 401
+    error_code = "CONSUMER_NOT_RESOLVED"
+    description = "Consumer was not resolved for this request"
+
+
+class ConsumerACLForbiddenError(PluginError):
+    status_code = 403
+    error_code = "CONSUMER_ACL_FORBIDDEN"
+    description = "Consumer is not allowed to access this route"

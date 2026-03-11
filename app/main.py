@@ -9,7 +9,13 @@ from app.context import RequestContext
 from app.config_store import match_route, get_available_routes
 from app.plugins.engine import PluginEngine
 from app.plugins.cache import CachePlugin
+from app.plugins.api_key import APIKeyAuthPlugin
+from app.plugins.consumer_acl import ConsumerACLPlugin
 from app.plugins.jwt_auth import JWTAuthPlugin
+from app.plugins.cors import CORSPlugin
+from app.plugins.ip_restriction import IPRestrictionPlugin
+from app.plugins.request_size import RequestSizePlugin
+from app.plugins.correlation_id import CorrelationIdPlugin
 from app.plugins.oauth import KeycloakOAuth2Plugin
 from app.plugins.rate_limit import RateLimitPlugin
 from app.plugins.retry import RetryPlugin
@@ -18,6 +24,7 @@ from app.plugins.forward_auth import ForwardAuthPlugin
 from app.plugins.validation import ValidationPlugin
 from app.plugins.transformation import TransformationPlugin
 from app.plugins.event_bridge import EventBridgePlugin
+from app.plugins.logging import RequestLoggingPlugin
 from app.plugins.errors import PluginError
 from app.logging_fast import log_json
 from app.metrics import REQUEST_COUNT, REQUEST_LATENCY, prometheus_metrics
@@ -62,7 +69,13 @@ SWAGGER_HTML = """
 plugins = PluginEngine(
     {
         "cache": CachePlugin(),
+        "api_key": APIKeyAuthPlugin(),
+        "consumer_acl": ConsumerACLPlugin(),
         "jwt_auth": JWTAuthPlugin(),
+        "cors": CORSPlugin(),
+        "ip_restriction": IPRestrictionPlugin(),
+        "request_size": RequestSizePlugin(),
+        "correlation_id": CorrelationIdPlugin(),
         "rate_limit": RateLimitPlugin(),
         "retry": RetryPlugin(),
         "circuit_breaker": CircuitBreakerPlugin(),
@@ -70,6 +83,7 @@ plugins = PluginEngine(
         "validation": ValidationPlugin(),
         "transformation": TransformationPlugin(),
         "event_bridge": EventBridgePlugin(),
+        "logging": RequestLoggingPlugin(),
         "oauth2": KeycloakOAuth2Plugin(
             issuer="https://keycloak.meudominio.com/realms/myrealm",
             audience="gateway-api",
@@ -253,8 +267,7 @@ async def app(scope, receive, send):
             "ERROR",
             "plugin_before_request_error",
             route=route["prefix"],
-            code=e.error_code,
-            description=e.description,
+            error=str(e),
         )        
         await send(
             {
@@ -318,6 +331,19 @@ async def app(scope, receive, send):
         resp = await plugins.run_forward(
             context,
             lambda: foward_call(scope, path, route, context),
+        )
+    except PluginError as e:
+        log_json(
+            "ERROR",
+            "plugin_forward_request_error",
+            route=route["prefix"],
+            code=e.error_code,
+            description=e.description,
+        )
+        resp = SimpleNamespace(
+            status=e.status_code,
+            headers=[("content-type", "application/json")],
+            body=json.dumps(e.to_dict()).encode(),
         )
     except Exception as error:
         log_json(

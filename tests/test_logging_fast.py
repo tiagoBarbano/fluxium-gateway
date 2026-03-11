@@ -32,3 +32,12 @@ def test_log_json_includes_trace_and_span_ids_from_active_span(capfd):
 
     assert record["trace_id"] == "1234567890abcdef1234567890abcdef"
     assert record["span_id"] == "1234567890abcdef"
+
+
+def test_log_json_respects_gateway_log_level(capfd, monkeypatch):
+    monkeypatch.setenv("GATEWAY_LOG_LEVEL", "ERROR")
+
+    log_json("INFO", "should_not_be_logged")
+    out, _ = capfd.readouterr()
+
+    assert out == ""

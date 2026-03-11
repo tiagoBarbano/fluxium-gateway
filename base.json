@@ -22,7 +22,118 @@
         "order": 2,
         "config": {
           "limit": 5,
-          "window_seconds": 60
+          "window_seconds": 60,
+          "by_consumer": true,
+          "consumer_limits": {
+            "consumer-enterprise-1": {
+              "limit": 100,
+              "window_seconds": 60
+            }
+          },
+          "consumer_tag_limits": {
+            "vip": {
+              "limit": 200,
+              "window_seconds": 60
+            }
+          }
+        }
+      },
+      {
+        "type": "logging",
+        "order": 3,
+        "config": {
+          "log_request": true,
+          "log_response": true,
+          "mask_sensitive_enabled": true,
+          "sensitive_fields": [
+            "password",
+            "token",
+            "cpf",
+            "email"
+          ],
+          "mask_value": "***",
+          "max_body_chars": 4000
+        }
+      },
+      {
+        "type": "cors",
+        "order": 1,
+        "config": {
+          "allowed_origins": [
+            "https://app.seudominio.com"
+          ],
+          "allowed_methods": [
+            "GET",
+            "POST",
+            "OPTIONS"
+          ],
+          "allowed_headers": [
+            "authorization",
+            "content-type",
+            "x-api-key"
+          ],
+          "allow_credentials": true,
+          "max_age": 600,
+          "block_disallowed_origin": true
+        }
+      },
+      {
+        "type": "api_key",
+        "order": 2,
+        "config": {
+          "header_name": "x-api-key",
+          "query_param": "api_key",
+          "keys": [
+            "key-prod-1",
+            "key-prod-2"
+          ],
+          "resolve_consumer": true,
+          "enforce_consumer_resolution": true
+        }
+      },
+      {
+        "type": "consumer_acl",
+        "order": 3,
+        "config": {
+          "allow_anonymous": false,
+          "allow_tags": [
+            "vip",
+            "partner"
+          ],
+          "required_actor_types": [
+            "application",
+            "service"
+          ]
+        }
+      },
+      {
+        "type": "ip_restriction",
+        "order": 4,
+        "config": {
+          "source": "x-forwarded-for",
+          "allowlist": [
+            "10.0.0.0/8",
+            "192.168.1.0/24"
+          ],
+          "denylist": [
+            "10.0.13.37"
+          ]
+        }
+      },
+      {
+        "type": "request_size",
+        "order": 5,
+        "config": {
+          "max_bytes": 1048576
+        }
+      },
+      {
+        "type": "correlation_id",
+        "order": 6,
+        "config": {
+          "incoming_header": "x-request-id",
+          "upstream_header": "x-request-id",
+          "response_header": "x-request-id"
         }
       },
       {
@@ -100,6 +211,23 @@
         }
       },
       {
+        "type": "logging",
+        "order": 1,
+        "config": {
+          "log_request": true,
+          "log_response": true,
+          "mask_sensitive_enabled": true,
+          "sensitive_fields": [
+            "password",
+            "token",
+            "cpf",
+            "email"
+          ],
+          "mask_value": "***",
+          "max_body_chars": 4000
+        }
+      },
+      {
         "type": "transformation",
         "order": 2,
         "config": {
@@ -134,75 +262,21 @@
           },
           "forward_after_publish": true
         }
-      }
-    ]
-  },
-  {
-  _id: 'e42ab6b4-d60c-4e0e-bb8e-ddee7d6b3667',
-  tenant_id: 'emp_0001_a',
-  api_id: '542eb8b7-9e07-4af7-96f9-3c92e449028c',
-  prefix: '/orders/events',
-  target_base: 'http: //orders-service',
-  methods: [
-    'POST'
-    ],
-  plugins: [
+      },
       {
-      type: 'validation',
-      order: NumberInt('1'),
-      config: {
-        allowed_methods: [
-          'POST'
-          ],
-        required_fields: [
-          'order_id',
-          'customer_id'
-          ],
-        header_rules: [
-            {
-            name: 'x-source',
-            required: true,
-            equals: 'portal'
-            }
-          ],
-        query_rules: []
+        "type": "request_size",
+        "order": 4,
+        "config": {
+          "max_bytes": 262144
         }
       },
       {
-      type: 'transformation',
-      order: NumberInt('2'),
-      config: {
-        set_headers: {
-          'x-origin': 'gateway'
-          },
-        remove_headers: [
-          'x-debug'
-          ],
-        json_rename: {
-          customer_id: 'client_id'
-          },
-        json_defaults: {
-          source: 'gateway',
-          event_version: 'v1'
-          },
-        json_remove: [
-          'internal_notes'
-          ]
-        }
-      },
-      {
-      type: 'event_bridge',
-      order: NumberInt('3'),
-      config: {
-        mode: 'pubsub',
-        channel: 'orders.events',
-        include_headers: false,
-        event: {
-          domain: 'orders',
-          event_type: 'order.created'
-          },
-        forward_after_publish: false,
-        response_status: NumberInt('202')
+        "type": "correlation_id",
+        "order": 5,
+        "config": {
+          "incoming_header": "x-correlation-id",
+          "upstream_header": "x-correlation-id",
+          "response_header": "x-correlation-id"
         }
       }
     ]

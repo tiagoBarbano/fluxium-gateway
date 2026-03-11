@@ -1,4 +1,5 @@
 import jwt
+import os
 
 from .base import BasePlugin
 from .errors import (
@@ -7,7 +8,7 @@ from .errors import (
     JWTMissingTenantError,
 )
 
-SECRET = "super-secret"
+SECRET = os.getenv("GATEWAY_JWT_SECRET", "supersecret")
 ALGORITHM = "HS256"
 
 class JWTAuthPlugin(BasePlugin):
@@ -26,7 +27,7 @@ class JWTAuthPlugin(BasePlugin):
 
         token = auth.split(" ", 1)[1]
         try:
-            payload = jwt.decode(token, SECRET, algorithms=[ALGORITHM])
+            payload = jwt.decode(token, SECRET, algorithms=[ALGORITHM], audience="gateway-api")
         except jwt.PyJWTError as exc:
             raise JWTInvalidTokenError() from exc
 

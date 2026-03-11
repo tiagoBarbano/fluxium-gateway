@@ -20,7 +20,7 @@ async def check_rate_limit(tenant, config, prefix):
     now = int(time.time())
     bucket = now // window
 
-    key = f"rl:{tenant}:{config.get('prefix')}:{bucket}"
+    key = f"rl:{tenant}:{prefix}:{bucket}"
 
     count = await redis_client.incr(key)
 
