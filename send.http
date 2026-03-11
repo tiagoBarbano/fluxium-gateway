@@ -68,10 +68,10 @@ Accept: application/json
 
 
 ### Basico (rota com cache/jwt/rate_limit)
-POST  http://localhost:8080/orders/events HTTP/1.1
+POST  http://localhost:8090/orders/events HTTP/1.1
 x-tenant-id: emp_0001_b
 Authorization: Bearer abcdef123456
-Host: localhost:8080
+Host: localhost:8090
 Content-Type: application/json
 Accept: application/json
 x-source: portal
