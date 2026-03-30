@@ -1,6 +1,13 @@
 from operator import itemgetter
+import os
 
 from app.logging_fast import log_json
+from opentelemetry import trace
+
+
+# module-level tracer and toggle
+_TRACING_ENABLED = os.getenv("GATEWAY_TRACING_ENABLED", "true").lower() in ("1", "true", "yes")
+_TRACER = trace.get_tracer("fluxium.gateway.plugins")
 
 
 class PluginEngine:
@@ -66,7 +73,17 @@ class PluginEngine:
                 continue
             if getattr(plugin, "phase", "before_after") != "before_after":
                 continue
-            await plugin.before_request(context)
+            # tracing span per plugin execution (conditional)
+            if _TRACING_ENABLED:
+                with _TRACER.start_as_current_span(f"plugin.before.{p_input['type']}") as span:
+                    span.set_attribute("route", context.route.get("prefix"))
+                    span.set_attribute("plugin.type", p_input["type"])
+                    # allow forcing sampling via plugin config
+                    if p_input.get("config", {}).get("force_sample") is True:
+                        span.set_attribute("force_sample", True)
+                    await plugin.before_request(context)
+            else:
+                await plugin.before_request(context)
 
     async def run_after(self, context):
         plugins_to_run = sorted(
@@ -86,7 +103,16 @@ class PluginEngine:
                 continue
             if getattr(plugin, "phase", "before_after") != "before_after":
                 continue
-            await plugin.after_response(context)
+            # tracing span per plugin execution (conditional)
+            if _TRACING_ENABLED:
+                with _TRACER.start_as_current_span(f"plugin.after.{p_input['type']}") as span:
+                    span.set_attribute("route", context.route.get("prefix"))
+                    span.set_attribute("plugin.type", p_input["type"])
+                    if p_input.get("config", {}).get("force_sample") is True:
+                        span.set_attribute("force_sample", True)
+                    await plugin.after_response(context)
+            else:
+                await plugin.after_response(context)
 
     async def run_forward(self, context, call_upstream):
         plugins_to_run = sorted(self._normalized_plugins(context), key=itemgetter("order"))
@@ -115,6 +141,14 @@ class PluginEngine:
                 route=context.route["prefix"],
                 plugin_type=plugin.name,
             )
+            # tracing span around forward plugin
+            if _TRACING_ENABLED:
+                with _TRACER.start_as_current_span(f"plugin.forward.{plugin.name}") as span:
+                    span.set_attribute("route", context.route.get("prefix"))
+                    span.set_attribute("plugin.type", plugin.name)
+                    if config.get("force_sample") is True:
+                        span.set_attribute("force_sample", True)
+                    return await plugin.around_request(context, call_next, config)
             return await plugin.around_request(context, call_next, config)
 
         return await execute(0)

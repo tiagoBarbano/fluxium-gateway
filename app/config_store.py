@@ -24,6 +24,7 @@ mongo_url = os.getenv(
 client = AsyncMongoClient(mongo_url)
 db = client.gateway
 routes_collection = db.routes
+plugins_collection = db.plugins
 
 _routes_cache = {}
 
@@ -102,6 +103,41 @@ def get_available_routes():
         )
 
     return sorted(routes, key=lambda item: item["prefix"] or "")
+
+
+async def save_plugin(plugin_doc):
+    """Insert or update a plugin document in the `plugins` collection.
+
+    Expected minimal fields in `plugin_doc`:
+      - name: human name / unique identifier
+      - type: plugin type (used by engine mapping)
+      - code: string with python source
+      - enabled: bool
+    """
+    if not plugin_doc.get("name") or not plugin_doc.get("type") or not plugin_doc.get("code"):
+        raise ValueError("plugin must contain name, type and code")
+
+    existing = await plugins_collection.find_one({"type": plugin_doc.get("type")})
+    if existing:
+        await plugins_collection.update_one({"_id": existing["_id"]}, {"$set": plugin_doc})
+        return existing["_id"]
+
+    res = await plugins_collection.insert_one(plugin_doc)
+    return res.inserted_id
+
+
+async def list_plugins():
+    """Return all plugin documents as a list."""
+    items = []
+    async for p in plugins_collection.find():
+        # convert ObjectId to string for JSON serialisation if present
+        if p.get("_id"):
+            try:
+                p["_id"] = str(p["_id"])
+            except Exception:
+                pass
+        items.append(p)
+    return items
 
 
 async def subscribe_config_updates():

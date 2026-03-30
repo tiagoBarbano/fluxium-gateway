@@ -7,6 +7,15 @@ from app.handler_http import SessionManager
 async def startup() -> None:
     """Startup middleware for initializing resources."""
     await load_routes()
+    # attempt to load plugins from DB into the engine (deferred import to avoid cycles)
+    try:
+        import app.main as main_mod
+
+        asyncio.create_task(main_mod.load_plugins_from_db_to_engine())
+    except Exception:
+        # silent: plugin loading is optional
+        pass
+
     asyncio.create_task(subscribe_config_updates())
 
 

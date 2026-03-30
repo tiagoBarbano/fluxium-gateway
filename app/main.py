@@ -92,6 +92,30 @@ plugins = PluginEngine(
     }
 )
 
+
+async def load_plugins_from_db_to_engine():
+    """Load enabled plugins from Mongo and register them into `plugins` engine.
+
+    This function is safe to call multiple times (it will replace types with
+    the instances loaded from DB for matching `type` fields).
+    """
+    try:
+        from app.config_store import list_plugins
+        from app.plugins.dynamic import build_plugin_instances
+
+        plugin_docs = await list_plugins()
+        instances = build_plugin_instances(plugin_docs)
+
+        # merge into existing engine mapping (overwrite by type)
+        plugins.plugins.update(instances)
+
+    except Exception as e:
+        # don't crash startup; just log
+        from app.logging_fast import log_json
+
+        log_json("ERROR", "load_plugins_from_db_failed", error=str(e))
+
+
 async def body_iterator(receive):
     while True:
         message = await receive()
@@ -115,6 +139,27 @@ async def app(scope, receive, send):
 
     if scope["type"] != "http":
         return
+
+    path = scope["path"]
+    # Admin plugin reload endpoint
+    if path == "/admin/plugins/reload" and scope["method"] == "POST":
+        try:
+            await load_plugins_from_db_to_engine()
+            await send({
+                "type": "http.response.start",
+                "status": 200,
+                "headers": [(b"content-type", b"application/json")],
+            })
+            await send({"type": "http.response.body", "body": json.dumps({"ok": True}).encode()})
+            return
+        except Exception as e:
+            await send({
+                "type": "http.response.start",
+                "status": 500,
+                "headers": [(b"content-type", b"application/json")],
+            })
+            await send({"type": "http.response.body", "body": json.dumps({"error": str(e)}).encode()})
+            return
 
     start = time.perf_counter()
     path = scope["path"]
@@ -208,6 +253,108 @@ async def app(scope, receive, send):
         )
         await send({"type": "http.response.body", "body": body})
         return
+
+    # Admin plugin management endpoints (minimal)
+    if path.startswith("/admin/plugins"):
+        # GET /admin/plugins -> list
+        if scope["method"] == "GET" and path.rstrip("/") == "/admin/plugins":
+            try:
+                from app.config_store import list_plugins
+
+                plugins_list = await list_plugins()
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": 200,
+                        "headers": [(b"content-type", b"application/json")],
+                    }
+                )
+                await send({"type": "http.response.body", "body": json.dumps({"plugins": plugins_list}).encode()})
+                return
+            except Exception as e:
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": 500,
+                        "headers": [(b"content-type", b"application/json")],
+                    }
+                )
+                await send({"type": "http.response.body", "body": json.dumps({"error": str(e)}).encode()})
+                return
+
+        # POST /admin/plugins -> create/update plugin
+        if scope["method"] == "POST" and path.rstrip("/") == "/admin/plugins":
+            body = await read_full_body(receive)
+            try:
+                payload = json.loads(body.decode())
+            except Exception:
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": 400,
+                        "headers": [(b"content-type", b"application/json")],
+                    }
+                )
+                await send({"type": "http.response.body", "body": json.dumps({"code": "INVALID_JSON"}).encode()})
+                return
+
+            # minimal validation
+            name = payload.get("name")
+            ptype = payload.get("type")
+            code = payload.get("code")
+
+            if not name or not ptype or not code:
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": 400,
+                        "headers": [(b"content-type", b"application/json")],
+                    }
+                )
+                await send({"type": "http.response.body", "body": json.dumps({"code": "MISSING_FIELDS", "description": "name,type,code required"}).encode()})
+                return
+
+            try:
+                from app.config_store import save_plugin
+
+                doc = {
+                    "name": name,
+                    "type": ptype,
+                    "code": code,
+                    "enabled": bool(payload.get("enabled", True)),
+                    "created_by": payload.get("created_by"),
+                }
+                inserted_id = await save_plugin(doc)
+
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": 201,
+                        "headers": [(b"content-type", b"application/json")],
+                    }
+                )
+                await send({"type": "http.response.body", "body": json.dumps({"id": str(inserted_id)}).encode()})
+                return
+            except ValueError as ve:
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": 400,
+                        "headers": [(b"content-type", b"application/json")],
+                    }
+                )
+                await send({"type": "http.response.body", "body": json.dumps({"code": "INVALID_PLUGIN", "description": str(ve)}).encode()})
+                return
+            except Exception as e:
+                await send(
+                    {
+                        "type": "http.response.start",
+                        "status": 500,
+                        "headers": [(b"content-type", b"application/json")],
+                    }
+                )
+                await send({"type": "http.response.body", "body": json.dumps({"error": str(e)}).encode()})
+                return
 
     method = scope["method"]
     key = f"{method}:{path}"
@@ -465,6 +612,6 @@ def _get_default_span_details(scope):
 app = OpenTelemetryMiddleware(
     app,
     excluded_urls=parse_excluded_urls("/metrics,/openapi.json,/docs,/routes"),
-    # exclude_spans=["send", "receive"],
+    exclude_spans=["send", "receive"],
     default_span_details=_get_default_span_details,
 )
