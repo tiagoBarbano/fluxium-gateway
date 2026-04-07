@@ -9,6 +9,7 @@ async def test_load_routes_creates_keys_for_all_methods(monkeypatch):
         def find(self):
             async def _iter():
                 yield {
+                    "tenant_id": "tenant-a",
                     "prefix": "/orders",
                     "target_base": "https://orders.local",
                     "methods": ["GET", "POST"],
@@ -21,8 +22,8 @@ async def test_load_routes_creates_keys_for_all_methods(monkeypatch):
 
     await config_store.load_routes()
 
-    assert "GET:/orders" in config_store._routes_cache
-    assert "POST:/orders" in config_store._routes_cache
+    assert "GET:/tenant-a/orders" in config_store._routes_cache
+    assert "POST:/tenant-a/orders" in config_store._routes_cache
 
 
 def test_match_route_considers_http_method(monkeypatch):
@@ -30,14 +31,14 @@ def test_match_route_considers_http_method(monkeypatch):
         config_store,
         "_routes_cache",
         {
-            "GET:/users/{id}": {"prefix": "/users/{id}", "methods": ["GET"]},
-            "POST:/users/{id}": {"prefix": "/users/{id}", "methods": ["POST"]},
+            "GET:/tenant-a/users/{id}": {"prefix": "/users/{id}", "methods": ["GET"]},
+            "POST:/tenant-a/users/{id}": {"prefix": "/users/{id}", "methods": ["POST"]},
         },
     )
 
-    get_route = config_store.match_route("GET:/users/123")
-    post_route = config_store.match_route("POST:/users/123")
-    delete_route = config_store.match_route("DELETE:/users/123")
+    get_route = config_store.match_route("GET:/tenant-a/users/123")
+    post_route = config_store.match_route("POST:/tenant-a/users/123")
+    delete_route = config_store.match_route("DELETE:/tenant-a/users/123")
 
     assert get_route["methods"] == ["GET"]
     assert post_route["methods"] == ["POST"]
@@ -55,8 +56,8 @@ def test_get_available_routes_deduplicates_same_route_for_multiple_methods(monke
         config_store,
         "_routes_cache",
         {
-            "GET:/products": route,
-            "POST:/products": route,
+            "GET:/tenant-a/products": route,
+            "POST:/tenant-a/products": route,
         },
     )
 
@@ -65,3 +66,22 @@ def test_get_available_routes_deduplicates_same_route_for_multiple_methods(monke
     assert len(routes) == 1
     assert routes[0]["methods"] == ["GET", "POST"]
     assert routes[0]["prefix"] == "/products"
+
+
+def test_match_route_supports_regex_path_params(monkeypatch):
+    monkeypatch.setattr(
+        config_store,
+        "_routes_cache",
+        {
+            "GET:/tiago.ventura-sandbox/ws/{cep:\\d{8}}/json/": {
+                "prefix": "/ws/{cep:\\d{8}}/json/",
+                "methods": ["GET"],
+            },
+        },
+    )
+
+    matched = config_store.match_route("GET:/tiago.ventura-sandbox/ws/02001000/json/")
+    not_matched = config_store.match_route("GET:/tiago.ventura-sandbox/ws/abc/json/")
+
+    assert matched is not None
+    assert not_matched is None

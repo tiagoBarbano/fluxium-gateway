@@ -29,17 +29,77 @@ plugins_collection = db.plugins
 _routes_cache = {}
 
 
+def _route_tenant(route: dict) -> str:
+    return str(route.get("tenant_id") or route.get("tenant") or "").strip("/")
+
+
+def _compose_cache_path(tenant: str, prefix: str) -> str:
+    normalized_prefix = "/" + str(prefix or "").lstrip("/")
+    normalized_tenant = str(tenant or "").strip("/")
+    if not normalized_tenant:
+        return normalized_prefix
+    return f"/{normalized_tenant}{normalized_prefix}"
+
+
 def _is_template_route(prefix: str) -> bool:
     return "{" in prefix and "}" in prefix
 
 
+def _template_part_to_regex(part: str) -> str:
+    # Supports `{param}` and `{param:custom_regex}` placeholders.
+    inner = part[1:-1]
+    if ":" in inner:
+        _, custom_regex = inner.split(":", 1)
+        custom_regex = custom_regex.strip()
+        if custom_regex:
+            return f"(?:{custom_regex})"
+    return r"[^/]+"
+
+
+def _split_template(template: str) -> list[tuple[bool, str]]:
+    parts = []
+    cursor = 0
+
+    while cursor < len(template):
+        start = template.find("{", cursor)
+        if start == -1:
+            parts.append((False, template[cursor:]))
+            break
+
+        if start > cursor:
+            parts.append((False, template[cursor:start]))
+
+        depth = 1
+        end = start + 1
+        while end < len(template) and depth > 0:
+            if template[end] == "{":
+                depth += 1
+            elif template[end] == "}":
+                depth -= 1
+            end += 1
+
+        if depth == 0:
+            parts.append((True, template[start:end]))
+            cursor = end
+            continue
+
+        # Unbalanced placeholder: treat the remainder as a literal string.
+        parts.append((False, template[start:]))
+        break
+
+    return parts
+
+
 def _match_template_route(path: str, template: str) -> bool:
-    parts = re.split(r"(\{[^{}]+\})", template)
-    pattern = "".join(
-        r"[^/]+" if part.startswith("{") and part.endswith("}") else re.escape(part)
-        for part in parts
-    )
-    return re.fullmatch(pattern, path) is not None
+    parts = _split_template(template)
+    try:
+        pattern = "".join(
+            _template_part_to_regex(part) if is_placeholder else re.escape(part)
+            for is_placeholder, part in parts
+        )
+        return re.fullmatch(pattern, path) is not None
+    except re.error:
+        return False
 
 async def load_routes(entity_id=None, tenant_id=None):
     global _routes_cache
@@ -51,8 +111,9 @@ async def load_routes(entity_id=None, tenant_id=None):
             print(f"Updating route in cache: {r['prefix']}")
             print(r)
             methods = r.get("methods") or ["GET"]
+            route_tenant = _route_tenant(r)
             for method in methods:
-                key = f"{method.upper()}:{r['prefix']}"
+                key = f"{method.upper()}:{_compose_cache_path(route_tenant, r['prefix'])}"
                 routes[key] = r
             _routes_cache.update(routes)
         return
@@ -60,25 +121,33 @@ async def load_routes(entity_id=None, tenant_id=None):
         print(f"Loading route into cache: {r['prefix']}")
         print(r)
         methods = r.get("methods") or ["GET"]
+        route_tenant = _route_tenant(r)
         for method in methods:
-            key = f"{method.upper()}:{r['prefix']}"
+            key = f"{method.upper()}:{_compose_cache_path(route_tenant, r['prefix'])}"
             routes[key] = r
     _routes_cache = routes
 
 def match_route(key):
     method, path = key.split(":", 1)
     method = method.upper()
+    template_candidates = []
+
     for prefix, route in _routes_cache.items():
         value_method, value_prefix = prefix.split(":", 1)
         if value_method.upper() != method:
             continue
+
         if _is_template_route(value_prefix):
-            if _match_template_route(path, value_prefix):
-                return route
+            template_candidates.append((value_prefix, route))
             continue
 
         if path.startswith(value_prefix):
             return route
+
+    for value_prefix, route in template_candidates:
+        if _match_template_route(path, value_prefix):
+            return route
+
     return None
 
 
@@ -166,7 +235,8 @@ async def subscribe_config_updates():
                 prefix = r["prefix"] if r else None
                 methods = r.get("methods") if r else None
                 if prefix and methods:
+                    route_tenant = _route_tenant(r)
                     for method in methods:
-                        key = f"{method.upper()}:{prefix}"
+                        key = f"{method.upper()}:{_compose_cache_path(route_tenant, prefix)}"
                         print(f"Removing route from cache: {key}")
                         _routes_cache.pop(key, None)

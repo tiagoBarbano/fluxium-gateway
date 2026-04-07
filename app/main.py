@@ -104,7 +104,7 @@ async def load_plugins_from_db_to_engine():
         from app.plugins.dynamic import build_plugin_instances
 
         plugin_docs = await list_plugins()
-        instances = build_plugin_instances(plugin_docs)
+        instances = await build_plugin_instances(plugin_docs)
 
         # merge into existing engine mapping (overwrite by type)
         plugins.plugins.update(instances)
@@ -382,7 +382,11 @@ async def app(scope, receive, send):
         return
 
     input_headers = {k.decode(): v.decode() for k, v in scope["headers"]}
-    tenant = input_headers.get("x-tenant-id", "unknown")
+    tenant_from_header = input_headers.get("x-tenant-id")
+    tenant_from_route = route.get("tenant_id") or route.get("tenant")
+    path_parts = [part for part in path.split("/") if part]
+    tenant_from_path = path_parts[0] if path_parts else None
+    tenant = tenant_from_route or tenant_from_header or tenant_from_path or "unknown"
     context = RequestContext(scope, route, tenant)
 
     try:
