@@ -6,7 +6,7 @@ from types import SimpleNamespace
 from app.handler_http import SessionManager
 from app.lifespan import lifespan
 from app.context import RequestContext
-from app.config_store import match_route, get_available_routes
+from app.config_store import match_route, get_available_routes, strip_tenant_from_path
 from app.plugins.engine import PluginEngine
 from app.plugins.cache import CachePlugin
 from app.plugins.api_key import APIKeyAuthPlugin
@@ -359,7 +359,7 @@ async def app(scope, receive, send):
     method = scope["method"]
     key = f"{method}:{path}"
 
-    route = match_route(key)
+    route, params = match_route(key)
     if not route:
         await send(
             {
@@ -477,11 +477,12 @@ async def app(scope, receive, send):
 
     request_body = await read_full_body(receive)
     context.extra["request_body"] = request_body
-
+    new_path = strip_tenant_from_path(path, tenant)
+    
     try:
         resp = await plugins.run_forward(
             context,
-            lambda: foward_call(scope, path, route, context),
+            lambda: foward_call(scope, new_path, route, context),
         )
     except PluginError as e:
         log_json(
@@ -601,8 +602,13 @@ async def foward_call(scope, path, route, context):
 
 
 def get_route_details(method, path):
-    x = match_route(f"{method}:{path}")
-    return x["prefix"] if x else path, method.upper()
+    route, _ = match_route(f"{method}:{path}")
+    if route:
+        res = route["prefix"]
+    else:
+        res = path
+    
+    return res, method.upper()
 
 
 def _get_default_span_details(scope):

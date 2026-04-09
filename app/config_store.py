@@ -10,14 +10,14 @@ PymongoInstrumentor().instrument()
 
 CHANNEL = "config_updates"
 redis_url = os.getenv(
-	"REDIS_URL",
-	"redis://:redis1234@localhost:6379/0",
+    "REDIS_URL",
+    "redis://:redis1234@localhost:6379/0",
 )
 
 redis_client = redis.from_url(redis_url)
 
 mongo_url = os.getenv(
-	"MONGO_URL",
+    "MONGO_URL",
     "mongodb://localhost:27017/?directConnection=true",
 )
 
@@ -27,6 +27,7 @@ routes_collection = db.routes
 plugins_collection = db.plugins
 
 _routes_cache = {}
+_template_cache = {}
 
 
 def _route_tenant(route: dict) -> str:
@@ -38,7 +39,32 @@ def _compose_cache_path(tenant: str, prefix: str) -> str:
     normalized_tenant = str(tenant or "").strip("/")
     if not normalized_tenant:
         return normalized_prefix
+    tenant_prefix = f"/{normalized_tenant}"
+    if normalized_prefix == tenant_prefix or normalized_prefix.startswith(
+        f"{tenant_prefix}/"
+    ):
+        return normalized_prefix
     return f"/{normalized_tenant}{normalized_prefix}"
+
+
+def _normalize_match_path(path: str) -> str:
+    path = str(path or "").strip()
+
+    if not path:
+        return "/"
+
+    if not path.startswith("/"):
+        path = "/" + path
+
+    # remove barra final (exceto root)
+    if len(path) > 1 and path.endswith("/"):
+        path = path[:-1]
+
+    return path
+
+
+def _is_static_prefix_match(path: str, prefix: str) -> bool:
+    return path == prefix or path.startswith(f"{prefix}/")
 
 
 def _is_template_route(prefix: str) -> bool:
@@ -101,6 +127,42 @@ def _match_template_route(path: str, template: str) -> bool:
     except re.error:
         return False
 
+
+def _extract_param_name(part: str) -> str:
+    inner = part[1:-1].strip()
+    if ":" in inner:
+        name, _ = inner.split(":", 1)
+        return name.strip()
+    return inner
+
+
+def _compile_template(template: str):
+    if template in _template_cache:
+        return _template_cache[template]
+
+    parts = _split_template(template)
+    param_names = []
+
+    try:
+        pattern = "".join(
+            f"({_template_part_to_regex(part)})"
+            if is_placeholder
+            else re.escape(part)
+            for is_placeholder, part in parts
+        )
+        param_names = [
+            _extract_param_name(part)
+            for is_placeholder, part in parts
+            if is_placeholder
+        ]
+        compiled = (re.compile(f"^{pattern}$"), param_names)
+    except re.error:
+        compiled = (None, [])
+
+    _template_cache[template] = compiled
+    return compiled
+
+
 async def load_routes(entity_id=None, tenant_id=None):
     global _routes_cache
     routes = {}
@@ -113,7 +175,9 @@ async def load_routes(entity_id=None, tenant_id=None):
             methods = r.get("methods") or ["GET"]
             route_tenant = _route_tenant(r)
             for method in methods:
-                key = f"{method.upper()}:{_compose_cache_path(route_tenant, r['prefix'])}"
+                key = (
+                    f"{method.upper()}:{_compose_cache_path(route_tenant, r['prefix'])}"
+                )
                 routes[key] = r
             _routes_cache.update(routes)
         return
@@ -127,28 +191,52 @@ async def load_routes(entity_id=None, tenant_id=None):
             routes[key] = r
     _routes_cache = routes
 
+
 def match_route(key):
     method, path = key.split(":", 1)
     method = method.upper()
-    template_candidates = []
+    path = _normalize_match_path(path)
+
+    best_route = None
+    best_params = None
+    best_score = -1  # prioridade
 
     for prefix, route in _routes_cache.items():
         value_method, value_prefix = prefix.split(":", 1)
+
         if value_method.upper() != method:
             continue
 
-        if _is_template_route(value_prefix):
-            template_candidates.append((value_prefix, route))
+        value_prefix = _normalize_match_path(value_prefix)
+
+        # 🔹 STATIC MATCH (mais rápido e prioritário)
+        if not _is_template_route(value_prefix):
+            if _is_static_prefix_match(path, value_prefix):
+                score = len(value_prefix)  # quanto mais específico melhor
+
+                if score > best_score:
+                    best_route = route
+                    best_params = None
+                    best_score = score
             continue
 
-        if path.startswith(value_prefix):
-            return route
+        # 🔹 TEMPLATE MATCH (com cache)
+        regex, param_names = _compile_template(value_prefix)
+        if regex is None:
+            continue
 
-    for value_prefix, route in template_candidates:
-        if _match_template_route(path, value_prefix):
-            return route
+        match = regex.fullmatch(path)
 
-    return None
+        if match:
+            score = len(value_prefix)  # prioriza template mais específico
+
+            if score > best_score:
+                params = dict(zip(param_names, match.groups()))
+                best_route = route
+                best_params = params
+                best_score = score
+
+    return best_route, best_params
 
 
 def get_available_routes():
@@ -183,12 +271,18 @@ async def save_plugin(plugin_doc):
       - code: string with python source
       - enabled: bool
     """
-    if not plugin_doc.get("name") or not plugin_doc.get("type") or not plugin_doc.get("code"):
+    if (
+        not plugin_doc.get("name")
+        or not plugin_doc.get("type")
+        or not plugin_doc.get("code")
+    ):
         raise ValueError("plugin must contain name, type and code")
 
     existing = await plugins_collection.find_one({"type": plugin_doc.get("type")})
     if existing:
-        await plugins_collection.update_one({"_id": existing["_id"]}, {"$set": plugin_doc})
+        await plugins_collection.update_one(
+            {"_id": existing["_id"]}, {"$set": plugin_doc}
+        )
         return existing["_id"]
 
     res = await plugins_collection.insert_one(plugin_doc)
@@ -209,13 +303,27 @@ async def list_plugins():
     return items
 
 
+def strip_tenant_from_path(path: str, tenant_id: str) -> str:
+    if not tenant_id:
+        return path
+
+    prefix = f"/{tenant_id}"
+
+    if path == prefix:
+        return "/"
+
+    if path.startswith(prefix + "/"):
+        return path[len(prefix):]
+
+    return path
+
+
 async def subscribe_config_updates():
     global _routes_cache
     pubsub = redis_client.pubsub()
     await pubsub.subscribe(CHANNEL)
 
     async for message in pubsub.listen():
-
         if message["type"] != "message":
             continue
 
@@ -223,15 +331,13 @@ async def subscribe_config_updates():
         event = orjson.loads(message["data"])
 
         if event["entity"] == "route":
-
             if event["event"] == "upsert":
-                await load_routes(
-                    event["entity_id"],
-                    event["tenant_id"]
-                )
+                await load_routes(event["entity_id"], event["tenant_id"])
 
             elif event["event"] == "delete":
-                r = await routes_collection.find_one({"tenant_id": event["tenant_id"], "_id": event["entity_id"]})
+                r = await routes_collection.find_one(
+                    {"tenant_id": event["tenant_id"], "_id": event["entity_id"]}
+                )
                 prefix = r["prefix"] if r else None
                 methods = r.get("methods") if r else None
                 if prefix and methods:
