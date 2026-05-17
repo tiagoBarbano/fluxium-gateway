@@ -1,4 +1,5 @@
 import json
+import re
 
 from app.logging_fast import log_json
 
@@ -20,9 +21,14 @@ class RequestLoggingPlugin(BasePlugin):
                 "secret",
                 "authorization",
                 "api_key",
+                "apikey",
+                "client_secret",
+                "secret_id",
                 "cpf",
                 "cnpj",
                 "email",
+                "phone",
+                "telefone",
             ],
         )
 
@@ -56,6 +62,25 @@ class RequestLoggingPlugin(BasePlugin):
 
         return payload
 
+    def _mask_sensitive_text(self, text, config):
+        mask_value = config.get("mask_value", "***")
+        patterns = [
+            r"(?i)(authorization:\s*bearer\s+)[^\s,;]+",
+            r"(?i)(client_secret[=:]\s*)[^&\s,;]+",
+            r"(?i)(api[_-]?key[=:]\s*)[^&\s,;]+",
+            r"(?i)(token[=:]\s*)[^&\s,;]+",
+            r"[\w.+-]+@[\w-]+(?:\.[\w-]+)+",
+            r"\b\d{3}\.?\d{3}\.?\d{3}-?\d{2}\b",
+            r"\b\d{2}\.?\d{3}\.?\d{3}/?\d{4}-?\d{2}\b",
+        ]
+        masked = text
+        for pattern in patterns:
+            if "(" in pattern and pattern.startswith("(?i)("):
+                masked = re.sub(pattern, rf"\1{mask_value}", masked)
+            else:
+                masked = re.sub(pattern, mask_value, masked)
+        return masked
+
     def _decode_body(self, body):
         if body is None:
             return ""
@@ -77,6 +102,8 @@ class RequestLoggingPlugin(BasePlugin):
             payload = self._mask_sensitive(payload, config)
 
         rendered = payload if isinstance(payload, str) else json.dumps(payload, ensure_ascii=False)
+        if config.get("mask_sensitive_enabled", True) and isinstance(rendered, str):
+            rendered = self._mask_sensitive_text(rendered, config)
 
         max_chars = int(config.get("max_body_chars", 4000))
         if max_chars > 0 and len(rendered) > max_chars:
@@ -89,30 +116,36 @@ class RequestLoggingPlugin(BasePlugin):
         tenant = context.tenant
         scope = context.scope
         method = scope.get("method")
+        log_bodies = bool(config.get("log_bodies", False))
 
         if config.get("log_request", True):
-            log_json(
-                "INFO",
-                "gateway_request_input",
-                plugin=self.name,
-                route=route,
-                method=method,
-                tenant=tenant,
-                request_body=self._body_for_log(context.extra.get("request_body", b""), config),
-            )
+            extra = {
+                "plugin": self.name,
+                "route": route,
+                "method": method,
+                "tenant": tenant,
+            }
+            if log_bodies:
+                extra["request_body"] = self._body_for_log(context.extra.get("request_body", b""), config)
+            else:
+                extra["request_body_bytes"] = len(context.extra.get("request_body", b"") or b"")
+            log_json("INFO", "gateway_request_input", **extra)
 
         response = await call_next()
 
         if config.get("log_response", True):
-            log_json(
-                "INFO",
-                "gateway_response_output",
-                plugin=self.name,
-                route=route,
-                method=method,
-                tenant=tenant,
-                status=getattr(response, "status", None),
-                response_body=self._body_for_log(getattr(response, "body", b""), config),
-            )
+            response_body = getattr(response, "body", b"") or b""
+            extra = {
+                "plugin": self.name,
+                "route": route,
+                "method": method,
+                "tenant": tenant,
+                "status": getattr(response, "status", None),
+            }
+            if log_bodies:
+                extra["response_body"] = self._body_for_log(response_body, config)
+            else:
+                extra["response_body_bytes"] = len(response_body)
+            log_json("INFO", "gateway_response_output", **extra)
 
         return response

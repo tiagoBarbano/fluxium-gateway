@@ -1,4 +1,6 @@
 import os
+import hmac
+import hashlib
 from urllib.parse import parse_qs
 
 from app.config_store import db
@@ -49,6 +51,7 @@ class APIKeyAuthPlugin(BasePlugin):
                 raise APIKeyInvalidError("Tenant is required to resolve consumer")
             return None
 
+        # Legacy lookup for records created before API key hashing was introduced.
         consumer = await self._consumers_collection.find_one(
             {
                 "tenant_id": tenant_id,
@@ -56,11 +59,35 @@ class APIKeyAuthPlugin(BasePlugin):
                 "status": {"$ne": "inactive"},
             }
         )
+        if consumer:
+            return consumer
+
+        if hasattr(self._consumers_collection, "find"):
+            async for candidate in self._consumers_collection.find(
+                {
+                    "tenant_id": tenant_id,
+                    "api_key_hashes": {"$exists": True},
+                    "status": {"$ne": "inactive"},
+                }
+            ):
+                for stored in candidate.get("api_key_hashes") or []:
+                    salt_hex = stored.get("salt")
+                    stored_hash = stored.get("hash")
+                    if not salt_hex or not stored_hash:
+                        continue
+                    digest = hashlib.pbkdf2_hmac(
+                        "sha256",
+                        api_key.encode("utf-8"),
+                        bytes.fromhex(salt_hex),
+                        200000,
+                    ).hex()
+                    if hmac.compare_digest(digest, stored_hash):
+                        return candidate
 
         if not consumer and enforce_resolution:
             raise APIKeyInvalidError("API key does not match an active consumer")
 
-        return consumer
+        return None
 
     async def _resolve_consumer_by_client_credentials(
         self,
@@ -83,6 +110,28 @@ class APIKeyAuthPlugin(BasePlugin):
                 "status": {"$ne": "inactive"},
             }
         )
+        if consumer:
+            return consumer
+
+        consumer = await self._consumers_collection.find_one(
+            {
+                "tenant_id": tenant_id,
+                "client_id": client_id,
+                "secret_hash": {"$exists": True},
+                "secret_salt": {"$exists": True},
+                "status": {"$ne": "inactive"},
+            }
+        )
+        if consumer:
+            digest = hashlib.pbkdf2_hmac(
+                "sha256",
+                secret_id.encode("utf-8"),
+                bytes.fromhex(consumer.get("secret_salt")),
+                200000,
+            ).hex()
+            if hmac.compare_digest(digest, consumer.get("secret_hash")):
+                return consumer
+            consumer = None
 
         if not consumer and enforce_resolution:
             raise APIKeyInvalidError("client_id/secret_id do not match an active consumer")

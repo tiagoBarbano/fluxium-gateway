@@ -34,6 +34,14 @@ class ForwardAuthPlugin(BasePlugin):
         audience = config.get("audience", "")
         return f"{token_url}|{client_id}|{scope}|{audience}"
 
+    def _safe_error_body(self, body):
+        if not isinstance(body, dict):
+            return "[redacted]"
+        return {
+            key: ("***" if any(token in str(key).lower() for token in ("token", "secret", "password", "authorization")) else value)
+            for key, value in body.items()
+        }
+
     async def _fetch_oauth_token(self, context, config, force_refresh=False):
         token_url = config.get("token_url")
         client_id = config.get("client_id")
@@ -71,7 +79,7 @@ class ForwardAuthPlugin(BasePlugin):
 
             if response.status >= 400:
                 raise RuntimeError(
-                    f"forward_auth token endpoint error status={response.status} body={body}"
+                    f"forward_auth token endpoint error status={response.status} body={self._safe_error_body(body)}"
                 )
 
             access_token = body.get("access_token")

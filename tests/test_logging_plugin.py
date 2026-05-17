@@ -26,6 +26,7 @@ async def test_logging_plugin_logs_request_and_response_with_masking(make_contex
 	config = {
 		"log_request": True,
 		"log_response": True,
+		"log_bodies": True,
 		"mask_sensitive_enabled": True,
 		"sensitive_fields": ["cpf"],
 		"mask_value": "***",

@@ -10,7 +10,7 @@ from .base import BasePlugin
 from .errors import EventBridgePublishError
 
 
-redis_url = os.getenv("REDIS_URL", "redis://:redis1234@localhost:6379/0")
+redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 redis_client = redis.from_url(redis_url)
 
 
@@ -44,15 +44,19 @@ class EventBridgePlugin(BasePlugin):
 
     async def around_request(self, context, call_next, config):
         include_headers = bool(config.get("include_headers", False))
+        include_query = bool(config.get("include_query", False))
+        include_body = bool(config.get("include_body", False))
         payload = {
             "tenant": context.tenant,
             "route": context.route.get("prefix"),
             "method": context.scope.get("method", "GET"),
             "path": context.scope.get("path", ""),
-            "query": self._scope_query(context),
-            "body": self._body_as_json_or_text(context),
             "metadata": config.get("event", {}),
         }
+        if include_query:
+            payload["query"] = self._scope_query(context)
+        if include_body:
+            payload["body"] = self._body_as_json_or_text(context)
         if include_headers:
             payload["headers"] = self._scope_headers(context)
 

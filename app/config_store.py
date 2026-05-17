@@ -5,13 +5,14 @@ import redis.asyncio as redis
 
 from pymongo import AsyncMongoClient
 from opentelemetry.instrumentation.pymongo import PymongoInstrumentor
+from app.logging_fast import log_json
 
 PymongoInstrumentor().instrument()
 
 CHANNEL = "config_updates"
 redis_url = os.getenv(
     "REDIS_URL",
-    "redis://:redis1234@localhost:6379/0",
+    "redis://localhost:6379/0",
 )
 
 redis_client = redis.from_url(redis_url)
@@ -28,6 +29,29 @@ plugins_collection = db.plugins
 
 _routes_cache = {}
 _template_cache = {}
+
+
+SENSITIVE_CONFIG_KEYS = (
+    "authorization",
+    "api_key",
+    "apikey",
+    "client_secret",
+    "password",
+    "secret",
+    "secret_id",
+    "token",
+)
+
+
+def _redact_config(value):
+    if isinstance(value, dict):
+        return {
+            key: "***" if any(token in str(key).lower() for token in SENSITIVE_CONFIG_KEYS) else _redact_config(item)
+            for key, item in value.items()
+        }
+    if isinstance(value, list):
+        return [_redact_config(item) for item in value]
+    return value
 
 
 def _route_tenant(route: dict) -> str:
@@ -170,8 +194,7 @@ async def load_routes(entity_id=None, tenant_id=None):
     if entity_id and tenant_id:
         r = await routes_collection.find_one({"tenant_id": tenant_id, "_id": entity_id})
         if r:
-            print(f"Updating route in cache: {r['prefix']}")
-            print(r)
+            log_json("INFO", "route_cache_update", route=r.get("prefix"), tenant=tenant_id)
             methods = r.get("methods") or ["GET"]
             route_tenant = _route_tenant(r)
             for method in methods:
@@ -182,8 +205,7 @@ async def load_routes(entity_id=None, tenant_id=None):
             _routes_cache.update(routes)
         return
     async for r in routes_collection.find():
-        print(f"Loading route into cache: {r['prefix']}")
-        print(r)
+        log_json("INFO", "route_cache_load", route=r.get("prefix"), tenant=_route_tenant(r))
         methods = r.get("methods") or ["GET"]
         route_tenant = _route_tenant(r)
         for method in methods:
@@ -255,7 +277,7 @@ def get_available_routes():
                 "target_base": route.get("target_base"),
                 "strip_prefix": route.get("strip_prefix", False),
                 "methods": route.get("methods", ["GET"]),
-                "plugins": route.get("plugins", []),
+                "plugins": _redact_config(route.get("plugins", [])),
             }
         )
 
@@ -299,7 +321,7 @@ async def list_plugins():
                 p["_id"] = str(p["_id"])
             except Exception:
                 pass
-        items.append(p)
+        items.append(_redact_config(p))
     return items
 
 
@@ -327,7 +349,7 @@ async def subscribe_config_updates():
         if message["type"] != "message":
             continue
 
-        print(f"Received config update: {message['data']}")
+        log_json("INFO", "config_update_received")
         event = orjson.loads(message["data"])
 
         if event["entity"] == "route":
@@ -344,5 +366,5 @@ async def subscribe_config_updates():
                     route_tenant = _route_tenant(r)
                     for method in methods:
                         key = f"{method.upper()}:{_compose_cache_path(route_tenant, prefix)}"
-                        print(f"Removing route from cache: {key}")
+                        log_json("INFO", "route_cache_remove", cache_key=key)
                         _routes_cache.pop(key, None)
