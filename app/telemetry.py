@@ -9,7 +9,7 @@ from opentelemetry.exporter.otlp.proto.grpc.trace_exporter import OTLPSpanExport
 
 otel_url = os.getenv(
 	"OTEL_EXPORTER_OTLP_ENDPOINT",
-	"http://tempo:4317",
+	"http://localhost:4317",
 )
 
 

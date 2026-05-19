@@ -5,21 +5,21 @@ import redis.asyncio as redis
 
 from pymongo import AsyncMongoClient
 from opentelemetry.instrumentation.pymongo import PymongoInstrumentor
-from app.logging_fast import log_json
 
 PymongoInstrumentor().instrument()
 
 CHANNEL = "config_updates"
+APP_ENV = str(os.getenv("APP_ENV", "staging")).strip().lower()
 redis_url = os.getenv(
     "REDIS_URL",
-    "redis://localhost:6379/0",
+    "redis://:redis1234@localhost:6379/0",
 )
 
 redis_client = redis.from_url(redis_url)
 
 mongo_url = os.getenv(
     "MONGO_URL",
-    "mongodb://localhost:27017/?directConnection=true",
+    "mongodb://localhost:27017",
 )
 
 client = AsyncMongoClient(mongo_url)
@@ -31,27 +31,25 @@ _routes_cache = {}
 _template_cache = {}
 
 
-SENSITIVE_CONFIG_KEYS = (
-    "authorization",
-    "api_key",
-    "apikey",
-    "client_secret",
-    "password",
-    "secret",
-    "secret_id",
-    "token",
-)
+def _normalize_environment(value: str | None) -> str:
+    env = str(value or "").strip().lower()
+    if env in {"prod", "prd", "production"}:
+        return "production"
+    if env in {"hml", "homolog", "homologacao", "stg", "staging"}:
+        return "staging"
+    return env
 
 
-def _redact_config(value):
-    if isinstance(value, dict):
-        return {
-            key: "***" if any(token in str(key).lower() for token in SENSITIVE_CONFIG_KEYS) else _redact_config(item)
-            for key, item in value.items()
-        }
-    if isinstance(value, list):
-        return [_redact_config(item) for item in value]
-    return value
+def _should_process_event(event: dict) -> bool:
+    event_environment = _normalize_environment(event.get("environment"))
+    if not event_environment:
+        return True
+
+    app_environment = _normalize_environment(APP_ENV)
+    if app_environment == "production":
+        return event_environment == "production"
+
+    return event_environment == "staging"
 
 
 def _route_tenant(route: dict) -> str:
@@ -169,9 +167,7 @@ def _compile_template(template: str):
 
     try:
         pattern = "".join(
-            f"({_template_part_to_regex(part)})"
-            if is_placeholder
-            else re.escape(part)
+            f"({_template_part_to_regex(part)})" if is_placeholder else re.escape(part)
             for is_placeholder, part in parts
         )
         param_names = [
@@ -194,7 +190,8 @@ async def load_routes(entity_id=None, tenant_id=None):
     if entity_id and tenant_id:
         r = await routes_collection.find_one({"tenant_id": tenant_id, "_id": entity_id})
         if r:
-            log_json("INFO", "route_cache_update", route=r.get("prefix"), tenant=tenant_id)
+            print(f"Updating route in cache: {r['prefix']}")
+            print(r)
             methods = r.get("methods") or ["GET"]
             route_tenant = _route_tenant(r)
             for method in methods:
@@ -205,7 +202,8 @@ async def load_routes(entity_id=None, tenant_id=None):
             _routes_cache.update(routes)
         return
     async for r in routes_collection.find():
-        log_json("INFO", "route_cache_load", route=r.get("prefix"), tenant=_route_tenant(r))
+        print(f"Loading route into cache: {r['prefix']}")
+        print(r)
         methods = r.get("methods") or ["GET"]
         route_tenant = _route_tenant(r)
         for method in methods:
@@ -277,7 +275,7 @@ def get_available_routes():
                 "target_base": route.get("target_base"),
                 "strip_prefix": route.get("strip_prefix", False),
                 "methods": route.get("methods", ["GET"]),
-                "plugins": _redact_config(route.get("plugins", [])),
+                "plugins": route.get("plugins", []),
             }
         )
 
@@ -321,7 +319,7 @@ async def list_plugins():
                 p["_id"] = str(p["_id"])
             except Exception:
                 pass
-        items.append(_redact_config(p))
+        items.append(p)
     return items
 
 
@@ -335,7 +333,7 @@ def strip_tenant_from_path(path: str, tenant_id: str) -> str:
         return "/"
 
     if path.startswith(prefix + "/"):
-        return path[len(prefix):]
+        return path[len(prefix) :]
 
     return path
 
@@ -349,8 +347,11 @@ async def subscribe_config_updates():
         if message["type"] != "message":
             continue
 
-        log_json("INFO", "config_update_received")
+        print(f"Received config update: {message['data']}")
         event = orjson.loads(message["data"])
+
+        if not _should_process_event(event):
+            continue
 
         if event["entity"] == "route":
             if event["event"] == "upsert":
@@ -366,5 +367,5 @@ async def subscribe_config_updates():
                     route_tenant = _route_tenant(r)
                     for method in methods:
                         key = f"{method.upper()}:{_compose_cache_path(route_tenant, prefix)}"
-                        log_json("INFO", "route_cache_remove", cache_key=key)
+                        print(f"Removing route from cache: {key}")
                         _routes_cache.pop(key, None)

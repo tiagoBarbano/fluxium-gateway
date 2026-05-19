@@ -145,3 +145,33 @@ def test_match_route_ignores_trailing_slash_in_template_paths(monkeypatch):
 
     assert matched is not None
     assert params == {"id": "1"}
+
+
+def test_should_process_event_accepts_legacy_event_without_environment(monkeypatch):
+    monkeypatch.setattr(config_store, "APP_ENV", "staging")
+
+    assert config_store._should_process_event({"entity": "route", "event": "upsert"})
+
+
+def test_should_process_event_accepts_staging_event_in_staging(monkeypatch):
+    monkeypatch.setattr(config_store, "APP_ENV", "staging")
+
+    assert config_store._should_process_event({"environment": "staging"})
+
+
+def test_should_process_event_rejects_production_event_in_staging(monkeypatch):
+    monkeypatch.setattr(config_store, "APP_ENV", "staging")
+
+    assert not config_store._should_process_event({"environment": "production"})
+
+
+def test_should_process_event_accepts_production_alias_in_production(monkeypatch):
+    monkeypatch.setattr(config_store, "APP_ENV", "prod")
+
+    assert config_store._should_process_event({"environment": "prd"})
+
+
+def test_should_process_event_rejects_staging_event_in_production(monkeypatch):
+    monkeypatch.setattr(config_store, "APP_ENV", "production")
+
+    assert not config_store._should_process_event({"environment": "staging"})
