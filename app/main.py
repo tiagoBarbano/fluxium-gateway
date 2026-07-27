@@ -28,6 +28,7 @@ from app.plugins.logging import RequestLoggingPlugin
 from app.plugins.errors import PluginError
 from app.logging_fast import log_json
 from app.metrics import REQUEST_COUNT, REQUEST_LATENCY, prometheus_metrics
+from app.usage_meter import record_gateway_request
 from opentelemetry.instrumentation.asgi import OpenTelemetryMiddleware
 from opentelemetry.util.http import parse_excluded_urls
 
@@ -382,7 +383,27 @@ async def app(scope, receive, send):
     tenant_from_route = route.get("tenant_id") or route.get("tenant")
     path_parts = [part for part in path.split("/") if part]
     tenant_from_path = path_parts[0] if path_parts else None
-    tenant = tenant_from_route or tenant_from_header or tenant_from_path or "unknown"
+    tenant = tenant_from_route or tenant_from_header or tenant_from_path
+    if not tenant:
+        await send(
+            {
+                "type": "http.response.start",
+                "status": 400,
+                "headers": [(b"content-type", b"application/json")],
+            }
+        )
+        await send(
+            {
+                "type": "http.response.body",
+                "body": json.dumps(
+                    {
+                        "code": "TENANT_REQUIRED",
+                        "description": "Tenant could not be resolved from route, header, or path",
+                    }
+                ).encode(),
+            }
+        )
+        return
     context = RequestContext(scope, route, tenant)
 
     try:
@@ -460,6 +481,7 @@ async def app(scope, receive, send):
             tenant=tenant,
         ).inc()
         REQUEST_LATENCY.labels(method=scope["method"], route=route["prefix"], tenant=tenant).observe(latency)
+        await record_gateway_request(tenant)
 
         log_json(
             "INFO",
@@ -546,6 +568,7 @@ async def app(scope, receive, send):
         tenant=tenant,
     ).inc()
     REQUEST_LATENCY.labels(method=scope["method"], route=route["prefix"], tenant=tenant).observe(latency)
+    await record_gateway_request(tenant)
 
     log_json(
         "INFO",
