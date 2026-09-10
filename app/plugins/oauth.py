@@ -4,7 +4,10 @@ from jwt import PyJWKClient
 
 from .base import BasePlugin
 from .errors import (
+    JWTClientNotAllowedError,
+    JWTEnvironmentMismatchError,
     JWTMissingAuthHeaderError,
+    JWTTenantMismatchError,
     JWTInvalidTokenError,
     JWTInvalidScopeError,
 )
@@ -18,11 +21,15 @@ class KeycloakOAuth2Plugin(BasePlugin):
         issuer: str,
         audience: str,
         required_scopes: list[str] | None = None,
+        expected_environment: str | None = None,
+        allowed_client_ids: list[str] | None = None,
         jwks_cache_ttl: int = 300,
     ):
         self.issuer = issuer.rstrip("/")
         self.audience = audience
         self.required_scopes = required_scopes or []
+        self.expected_environment = expected_environment
+        self.allowed_client_ids = set(allowed_client_ids or [])
         self.jwks_url = f"{self.issuer}/protocol/openid-connect/certs"
 
         self._jwks_client = PyJWKClient(self.jwks_url)
@@ -64,9 +71,23 @@ class KeycloakOAuth2Plugin(BasePlugin):
             if not any(scope in token_scopes for scope in self.required_scopes):
                 raise JWTInvalidScopeError()
 
+        if self.expected_environment and payload.get("environment") != self.expected_environment:
+            raise JWTEnvironmentMismatchError()
+
+        client_id = payload.get("azp") or payload.get("client_id")
+        if self.allowed_client_ids and client_id not in self.allowed_client_ids:
+            raise JWTClientNotAllowedError()
+
+        request_tenant_id = headers.get("x-tenant-id")
+        token_tenant_id = payload.get("tenant_id")
+        if request_tenant_id and token_tenant_id != request_tenant_id:
+            raise JWTTenantMismatchError()
+
         # 🔐 Extrair informações úteis
         context.user_id = payload.get("sub")
-        context.client_id = payload.get("azp")  # authorized party
+        context.client_id = client_id  # authorized party
+        context.tenant_id = token_tenant_id
+        context.environment = payload.get("environment")
         context.scopes = token_scopes
         context.roles = self._extract_roles(payload)
 

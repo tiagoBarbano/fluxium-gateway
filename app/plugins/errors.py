@@ -27,6 +27,24 @@ class JWTInvalidScopeError(PluginError):
     description = "JWT token does not have the required scope"
 
 
+class JWTEnvironmentMismatchError(PluginError):
+    status_code = 403
+    error_code = "TOKEN_ENVIRONMENT_MISMATCH"
+    description = "Token is not authorized for this decision environment"
+
+
+class JWTClientNotAllowedError(PluginError):
+    status_code = 403
+    error_code = "JWT_CLIENT_NOT_ALLOWED"
+    description = "JWT client is not authorized for this runtime"
+
+
+class JWTTenantMismatchError(PluginError):
+    status_code = 403
+    error_code = "JWT_TENANT_MISMATCH"
+    description = "Token tenant does not match the request tenant"
+
+
 class JWTInvalidTokenError(PluginError):
     status_code = 401
     error_code = "JWT_INVALID_TOKEN"

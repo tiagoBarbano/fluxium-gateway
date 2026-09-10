@@ -1,5 +1,6 @@
 import time
 import json
+import os
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -86,9 +87,19 @@ plugins = PluginEngine(
         "event_bridge": EventBridgePlugin(),
         "logging": RequestLoggingPlugin(),
         "oauth2": KeycloakOAuth2Plugin(
-            issuer="https://keycloak.meudominio.com/realms/myrealm",
-            audience="gateway-api",
-            required_scopes=["pricing.read"],
+            issuer=os.getenv("DECISION_TOKEN_ISSUER", "https://keycloak.meudominio.com/realms/myrealm"),
+            audience=os.getenv("DECISION_EXPECTED_AUDIENCE", "gateway-api"),
+            required_scopes=[
+                scope
+                for scope in os.getenv("DECISION_REQUIRED_SCOPES", "decision:execute").split()
+                if scope
+            ],
+            expected_environment=os.getenv("DECISION_ENVIRONMENT") or None,
+            allowed_client_ids=[
+                client_id
+                for client_id in os.getenv("DECISION_ALLOWED_CLIENT_IDS", "").split(",")
+                if client_id.strip()
+            ],
         ),
     }
 )
