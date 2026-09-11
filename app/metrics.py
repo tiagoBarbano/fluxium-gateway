@@ -16,7 +16,7 @@ REQUEST_LATENCY = Histogram(
     ["method", "route", "tenant"]
 )
 
-IGNORED_PATHS = {"/metrics", "/docs", "/openapi.json", "/favicon.ico"}
+IGNORED_PATHS = {"/health", "/health/", "/metrics", "/docs", "/openapi.json", "/favicon.ico"}
 
 def prometheus_metrics():
     """Generate Prometheus metrics for the application."""
